@@ -18,22 +18,14 @@ def detect_anomaly(odds_history: pd.DataFrame, threshold: float = 0.3):
     return anomalies
 
 def get_odds_tracking(match_id=None):
-    odds_df = load_odds_history()
+    all_odds_df = load_odds_history()
     matches_df = load_matches()
     teams_df = load_teams()
     
-    if match_id:
-        odds_df = odds_df[odds_df['matchId'] == match_id]
-    
-    if odds_df.empty:
-        match_id = 'M003'
-        odds_df = load_odds_history()
-        odds_df = odds_df[odds_df['matchId'] == 'M003']
-    
-    match_ids = odds_df['matchId'].unique()
+    all_match_ids = all_odds_df['matchId'].unique()
     match_list = []
     
-    for mid in match_ids:
+    for mid in all_match_ids:
         match = matches_df[matches_df['matchId'] == mid]
         if not match.empty:
             t1 = teams_df[teams_df['teamId'] == match.iloc[0]['team1Id']]
@@ -48,7 +40,17 @@ def get_odds_tracking(match_id=None):
                 'date': match.iloc[0]['matchDate']
             })
     
-    current_match = match_list[0] if match_list else {'id': match_id, 'name': '未知比赛'}
+    odds_df = all_odds_df
+    if match_id:
+        odds_df = all_odds_df[all_odds_df['matchId'] == match_id]
+    
+    if odds_df.empty:
+        default_mid = match_list[0]['id'] if match_list else 'M003'
+        match_id = default_mid
+        odds_df = all_odds_df[all_odds_df['matchId'] == default_mid]
+    
+    current_match_id = match_id if match_id else (odds_df['matchId'].iloc[0] if len(odds_df) > 0 else (match_list[0]['id'] if match_list else None))
+    current_match = next((m for m in match_list if m['id'] == current_match_id), (match_list[0] if match_list else {'id': current_match_id, 'name': '未知比赛'}))
     
     odds_history = []
     for _, row in odds_df.iterrows():
@@ -63,7 +65,7 @@ def get_odds_tracking(match_id=None):
     anomalies = detect_anomaly(odds_df)
     
     return {
-        'matchId': match_id if match_id else match_ids[0],
+        'matchId': match_id if match_id else (all_match_ids[0] if len(all_match_ids) > 0 else None),
         'matchName': current_match['name'],
         'team1': current_match.get('team1', '主队'),
         'team2': current_match.get('team2', '客队'),

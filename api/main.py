@@ -35,17 +35,27 @@ def dashboard_summary():
     from analysis.bet_analysis import get_bet_distribution
     from analysis.live_analysis import get_live_analysis
     from analysis.upset_analysis import get_upset_analysis
+    from api.data_loader import load_matches, load_odds_history
     
     bet_data = get_bet_distribution()
     live_data = get_live_analysis()
     upset_data = get_upset_analysis()
+    matches_df = load_matches()
+    odds_df = load_odds_history()
+    
+    anomaly_count = 0
+    for mid in odds_df['matchId'].unique():
+        mid_df = odds_df[odds_df['matchId'] == mid].sort_values('timestamp')
+        for col in ['homeOdds', 'awayOdds']:
+            pct = mid_df[col].pct_change()
+            anomaly_count += int((pct.abs() > 0.3).sum())
     
     return {
         'totalBetAmount': bet_data['totalAmount'],
-        'todayMatches': 8,
+        'todayMatches': int(len(matches_df)),
         'liveMatches': live_data['totalLiveMatches'],
         'valueOpportunities': live_data['totalValueOpportunities'],
-        'anomaliesDetected': 3,
+        'anomaliesDetected': int(anomaly_count),
         'avgUpsetRate': upset_data['summary']['majorAvgUpsetRate'],
         'biggestUpset': upset_data['summary']['biggestUpset']
     }

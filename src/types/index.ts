@@ -123,6 +123,7 @@ export interface TeamHistoryResponse {
   matchHistory: MatchHistoryItem[];
   winTrend: WinTrendPoint[];
   allTeams: Team[];
+  hasHistory: boolean;
 }
 
 export interface ValueBet {
