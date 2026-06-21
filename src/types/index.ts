@@ -250,6 +250,7 @@ export interface OddsComparisonResponse {
   match2: OddsComparisonMatch;
   matchList: MatchInfo[];
   alignedTimestamps: string[];
+  alignedTimestampsM2: string[];
   match1History: OddsHistoryPoint[];
   match2History: OddsHistoryPoint[];
   match1NormalizedHome: number[];

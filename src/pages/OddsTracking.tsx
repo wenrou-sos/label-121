@@ -134,6 +134,11 @@ export default function OddsTracking() {
   }, [compareMode]);
 
   useEffect(() => {
+    if (compareMode) return;
+    fetchOddsTracking(selectedMatch);
+  }, [compareMode, fetchOddsTracking, selectedMatch]);
+
+  useEffect(() => {
     if (!compareMode) return;
     fetchOddsTracking(selectedMatch);
   }, [compareMode, fetchOddsTracking, selectedMatch]);
@@ -316,6 +321,7 @@ export default function OddsTracking() {
 
   interface ComparisonFiltered {
     timestamps: string[];
+    timestampsM2: string[];
     m1NormHome: number[];
     m1NormAway: number[];
     m2NormHome: number[];
@@ -324,6 +330,7 @@ export default function OddsTracking() {
     m2History: OddsHistoryPoint[];
     diffSeries: number[];
     maxDiffRegion: OddsComparisonResponse['maxDiffRegion'];
+    maxDiffRegionM2: OddsComparisonResponse['maxDiffRegion'];
     label: string;
   }
 
@@ -332,6 +339,7 @@ export default function OddsTracking() {
       return null;
     }
     const timestamps = oddsComparison.alignedTimestamps;
+    const timestampsM2 = oddsComparison.alignedTimestampsM2 || timestamps;
     const lastTs = timestamps[timestamps.length - 1];
     const endTime = new Date(lastTs).getTime();
     let startTime: number;
@@ -342,6 +350,7 @@ export default function OddsTracking() {
       if (!customStart || !customEnd) {
         return {
           timestamps,
+          timestampsM2,
           m1NormHome: oddsComparison.match1NormalizedHome,
           m1NormAway: oddsComparison.match1NormalizedAway,
           m2NormHome: oddsComparison.match2NormalizedHome,
@@ -350,6 +359,11 @@ export default function OddsTracking() {
           m2History: oddsComparison.match2History,
           diffSeries: oddsComparison.diffSeries,
           maxDiffRegion: oddsComparison.maxDiffRegion,
+          maxDiffRegionM2: oddsComparison.maxDiffRegion ? {
+            ...oddsComparison.maxDiffRegion,
+            startTimestamp: timestampsM2[oddsComparison.maxDiffRegion.startIndex],
+            endTimestamp: timestampsM2[oddsComparison.maxDiffRegion.endIndex]
+          } : null,
           label: '自定义'
         };
       }
@@ -375,6 +389,7 @@ export default function OddsTracking() {
     if (idx.length === 0) {
       return {
         timestamps: [],
+        timestampsM2: [],
         m1NormHome: [],
         m1NormAway: [],
         m2NormHome: [],
@@ -383,6 +398,7 @@ export default function OddsTracking() {
         m2History: [],
         diffSeries: [],
         maxDiffRegion: null,
+        maxDiffRegionM2: null,
         label
       };
     }
@@ -392,6 +408,7 @@ export default function OddsTracking() {
 
     const origRegion = oddsComparison.maxDiffRegion;
     let adjustedRegion: OddsComparisonResponse['maxDiffRegion'] = null;
+    let adjustedRegionM2: OddsComparisonResponse['maxDiffRegion'] = null;
     if (origRegion) {
       const rs = Math.max(0, origRegion.startIndex - startIdx);
       const re = Math.min(endIdx - startIdx, origRegion.endIndex - startIdx);
@@ -403,11 +420,19 @@ export default function OddsTracking() {
           startTimestamp: timestamps[startIdx + rs],
           endTimestamp: timestamps[startIdx + re]
         };
+        adjustedRegionM2 = {
+          ...origRegion,
+          startIndex: rs,
+          endIndex: re,
+          startTimestamp: timestampsM2[startIdx + rs],
+          endTimestamp: timestampsM2[startIdx + re]
+        };
       }
     }
 
     return {
       timestamps: slice(timestamps),
+      timestampsM2: slice(timestampsM2),
       m1NormHome: slice(oddsComparison.match1NormalizedHome),
       m1NormAway: slice(oddsComparison.match1NormalizedAway),
       m2NormHome: slice(oddsComparison.match2NormalizedHome),
@@ -416,6 +441,7 @@ export default function OddsTracking() {
       m2History: slice(oddsComparison.match2History),
       diffSeries: slice(oddsComparison.diffSeries),
       maxDiffRegion: adjustedRegion,
+      maxDiffRegionM2: adjustedRegionM2,
       label
     };
   }, [compareMode, oddsComparison, timeRange, customStart, customEnd]);
@@ -429,9 +455,21 @@ export default function OddsTracking() {
     },
     {
       x: comparisonFiltered.timestamps,
+      y: comparisonFiltered.m1NormAway,
+      name: `${oddsComparison!.match1.team2}（归一化）`,
+      color: '#10b981'
+    },
+    {
+      x: comparisonFiltered.timestamps,
       y: comparisonFiltered.m2NormHome,
       name: `${oddsComparison!.match2.team1}（归一化）`,
       color: '#a855f7'
+    },
+    {
+      x: comparisonFiltered.timestamps,
+      y: comparisonFiltered.m2NormAway,
+      name: `${oddsComparison!.match2.team2}（归一化）`,
+      color: '#f59e0b'
     }
   ] : filteredHistory.length > 0 ? [
     {
@@ -756,10 +794,10 @@ export default function OddsTracking() {
                 <span className="text-sm font-normal text-slate-400">
                   ({compareMode ? comparisonFiltered?.label || '对比模式' : timeWindowLabel || '赛前24小时'})
                 </span>
-                {compareMode && comparisonFiltered?.maxDiffRegion && (
-                  <span className="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-400 text-xs font-medium">
+                {compareMode && comparisonFiltered?.maxDiffRegion && comparisonFiltered?.maxDiffRegionM2 && (
+                  <span className="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-400 text-xs font-medium" title={`比赛A: ${comparisonFiltered.maxDiffRegion.startTimestamp} ~ ${comparisonFiltered.maxDiffRegion.endTimestamp}\n比赛B: ${comparisonFiltered.maxDiffRegionM2.startTimestamp} ~ ${comparisonFiltered.maxDiffRegionM2.endTimestamp}`}>
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    差异最大时段: {comparisonFiltered.maxDiffRegion.startTimestamp.split(' ')[1]} ~ {comparisonFiltered.maxDiffRegion.endTimestamp.split(' ')[1]}
+                    差异最大时段: A({comparisonFiltered.maxDiffRegion.startTimestamp.split(' ')[1]} ~ {comparisonFiltered.maxDiffRegion.endTimestamp.split(' ')[1]}) / B({comparisonFiltered.maxDiffRegionM2.startTimestamp.split(' ')[1]} ~ {comparisonFiltered.maxDiffRegionM2.endTimestamp.split(' ')[1]})
                   </span>
                 )}
               </h3>
@@ -774,7 +812,7 @@ export default function OddsTracking() {
             </div>
 
             {compareMode && oddsComparison && comparisonFiltered ? (
-              comparisonFiltered.maxDiffRegion && (
+              comparisonFiltered.maxDiffRegion && comparisonFiltered.maxDiffRegionM2 && (
                 <div className="stat-card">
                   <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2">
                     <GitCompare className="w-5 h-5 text-orange-400" />
@@ -782,12 +820,21 @@ export default function OddsTracking() {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-4 rounded-xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
-                      <p className="text-sm text-slate-400 mb-1">时间范围</p>
+                      <p className="text-sm text-slate-400 mb-1">比赛A时间范围</p>
                       <p className="text-lg font-semibold text-white">
                         {comparisonFiltered.maxDiffRegion.startTimestamp}
                       </p>
                       <p className="text-sm text-slate-500">
                         ~ {comparisonFiltered.maxDiffRegion.endTimestamp}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-transparent border border-purple-500/20">
+                      <p className="text-sm text-slate-400 mb-1">比赛B时间范围</p>
+                      <p className="text-lg font-semibold text-white">
+                        {comparisonFiltered.maxDiffRegionM2.startTimestamp}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        ~ {comparisonFiltered.maxDiffRegionM2.endTimestamp}
                       </p>
                     </div>
                     <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-transparent border border-blue-500/20">

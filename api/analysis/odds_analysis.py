@@ -222,7 +222,9 @@ def get_odds_comparison(match_id_1, match_id_2):
 
     merged = merged.dropna(subset=['homeOdds_m1', 'homeOdds_m2']).reset_index(drop=True)
 
-    timestamps = [t.strftime('%Y-%m-%d %H:%M:%S') for t in merged['timestamp_m1']]
+    timestamps_m1 = [t.strftime('%Y-%m-%d %H:%M:%S') for t in merged['timestamp_m1']]
+    timestamps_m2 = [t.strftime('%Y-%m-%d %H:%M:%S') for t in merged['timestamp_m2']]
+    timestamps = timestamps_m1
     m1_home = merged['homeOdds_m1'].tolist()
     m1_away = merged['awayOdds_m1'].tolist()
     m2_home = merged['homeOdds_m2'].tolist()
@@ -233,7 +235,9 @@ def get_odds_comparison(match_id_1, match_id_2):
     m2_norm_home = _normalize_series(m2_home).tolist()
     m2_norm_away = _normalize_series(m2_away).tolist()
 
-    diff = np.abs(np.asarray(m1_norm_home) - np.asarray(m2_norm_home)).tolist()
+    diff_home = np.abs(np.asarray(m1_norm_home) - np.asarray(m2_norm_home))
+    diff_away = np.abs(np.asarray(m1_norm_away) - np.asarray(m2_norm_away))
+    diff = np.maximum(diff_home, diff_away).tolist()
 
     max_diff_region = None
     if len(diff) > 0:
@@ -268,11 +272,11 @@ def get_odds_comparison(match_id_1, match_id_2):
 
     match1_hist = [
         {'timestamp': t, 'homeOdds': h, 'awayOdds': a, 'handicapOdds': 0.0, 'totalOdds': 0.0}
-        for t, h, a in zip(timestamps, m1_home, m1_away)
+        for t, h, a in zip(timestamps_m1, m1_home, m1_away)
     ]
     match2_hist = [
         {'timestamp': t, 'homeOdds': h, 'awayOdds': a, 'handicapOdds': 0.0, 'totalOdds': 0.0}
-        for t, h, a in zip(timestamps, m2_home, m2_away)
+        for t, h, a in zip(timestamps_m2, m2_home, m2_away)
     ]
 
     return {
@@ -280,6 +284,7 @@ def get_odds_comparison(match_id_1, match_id_2):
         'match2': m2,
         'matchList': match_list,
         'alignedTimestamps': timestamps,
+        'alignedTimestampsM2': timestamps_m2,
         'match1History': match1_hist,
         'match2History': match2_hist,
         'match1NormalizedHome': m1_norm_home,
