@@ -14,11 +14,12 @@ interface LineChartProps {
   height?: number;
   yAxisTitle?: string;
   anomalies?: { x: string; y: number; color: string }[];
+  highlightRanges?: { startIndex: number; endIndex: number; color?: string; label?: string }[];
   className?: string;
   onPointClick?: (point: { x: string; y: number; seriesName: string; xIndex: number }) => void;
 }
 
-export default function LineChart({ data, title, height = 400, yAxisTitle, anomalies, className, onPointClick }: LineChartProps) {
+export default function LineChart({ data, title, height = 400, yAxisTitle, anomalies, highlightRanges, className, onPointClick }: LineChartProps) {
   const traces: Partial<Plotly.PlotData>[] = data.map((series) => ({
     type: 'scatter',
     mode: 'lines+markers',
@@ -90,7 +91,28 @@ export default function LineChart({ data, title, height = 400, yAxisTitle, anoma
       x: 0.5,
       xanchor: 'center'
     } : undefined,
-    hovermode: 'x unified'
+    hovermode: 'x unified',
+    shapes: highlightRanges && highlightRanges.length > 0 ? highlightRanges.map((r, i) => {
+      const xs = data[0]?.x || [];
+      return {
+        type: 'rect',
+        xref: 'x',
+        yref: 'paper',
+        x0: xs[r.startIndex],
+        x1: xs[r.endIndex],
+        y0: 0,
+        y1: 1,
+        fillcolor: r.color || 'rgba(239, 68, 68, 0.12)',
+        line: { width: 0 },
+        label: r.label ? {
+          text: r.label,
+          textposition: 'top center',
+          font: { size: 11, color: '#fca5a5' },
+          showbackground: false
+        } : undefined,
+        name: `highlight-${i}`
+      } as Partial<Plotly.Shape>;
+    }) : undefined
   };
 
   const config: Partial<Plotly.Config> = {

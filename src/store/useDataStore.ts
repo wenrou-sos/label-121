@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   BetDistributionResponse,
   OddsTrackingResponse,
+  OddsComparisonResponse,
   UpsetAnalysisResponse,
   TeamHistoryResponse,
   LiveAnalysisResponse,
@@ -16,6 +17,7 @@ const API_BASE = '/api';
 interface DataState {
   betDistribution: BetDistributionResponse | null;
   oddsTracking: OddsTrackingResponse | null;
+  oddsComparison: OddsComparisonResponse | null;
   upsetAnalysis: UpsetAnalysisResponse | null;
   teamHistory: TeamHistoryResponse | null;
   liveAnalysis: LiveAnalysisResponse | null;
@@ -28,6 +30,8 @@ interface DataState {
 
   fetchBetDistribution: (league?: string) => Promise<void>;
   fetchOddsTracking: (matchId?: string) => Promise<void>;
+  fetchOddsComparison: (matchId1: string, matchId2: string) => Promise<void>;
+  clearOddsComparison: () => void;
   fetchUpsetAnalysis: () => Promise<void>;
   fetchTeamHistory: (team1?: string, team2?: string) => Promise<void>;
   fetchLiveAnalysis: () => Promise<void>;
@@ -43,6 +47,7 @@ interface DataState {
 export const useDataStore = create<DataState>((set) => ({
   betDistribution: null,
   oddsTracking: null,
+  oddsComparison: null,
   upsetAnalysis: null,
   teamHistory: null,
   liveAnalysis: null,
@@ -83,6 +88,24 @@ export const useDataStore = create<DataState>((set) => ({
     } finally {
       set({ loading: { ...useDataStore.getState().loading, oddsTracking: false } });
     }
+  },
+
+  fetchOddsComparison: async (matchId1: string, matchId2: string) => {
+    set({ loading: { ...useDataStore.getState().loading, oddsComparison: true } });
+    try {
+      const params = new URLSearchParams({ matchId1, matchId2 });
+      const res = await fetch(`${API_BASE}/odds-comparison?${params.toString()}`);
+      const data = await res.json();
+      set({ oddsComparison: data, error: { ...useDataStore.getState().error, oddsComparison: null } });
+    } catch (err) {
+      set({ error: { ...useDataStore.getState().error, oddsComparison: (err as Error).message } });
+    } finally {
+      set({ loading: { ...useDataStore.getState().loading, oddsComparison: false } });
+    }
+  },
+
+  clearOddsComparison: () => {
+    set({ oddsComparison: null });
   },
 
   fetchUpsetAnalysis: async () => {
@@ -190,7 +213,7 @@ export const useDataStore = create<DataState>((set) => ({
       const res = await fetch(`${API_BASE}/bet-details?${params.toString()}`);
       const data: BetDetailResponse = await res.json();
       return data;
-    } catch (err) {
+    } catch {
       return null;
     }
   },
@@ -201,7 +224,7 @@ export const useDataStore = create<DataState>((set) => ({
       const res = await fetch(`${API_BASE}/odds-tracking?${params.toString()}`);
       const data: OddsTrackingResponse = await res.json();
       return data;
-    } catch (err) {
+    } catch {
       return null;
     }
   }

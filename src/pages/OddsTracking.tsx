@@ -6,8 +6,8 @@ import Header from '../components/layout/Header';
 import LineChart from '../components/charts/LineChart';
 import Modal from '../components/common/Modal';
 import Pagination from '../components/common/Pagination';
-import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff, Loader2, AlertOctagon, Calendar, SlidersHorizontal } from 'lucide-react';
-import type { OddsHistoryPoint, Anomaly, OddsAlert, OddsDetail } from '../types';
+import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff, Loader2, AlertOctagon, Calendar, SlidersHorizontal, GitCompare, X } from 'lucide-react';
+import type { OddsHistoryPoint, Anomaly, OddsAlert, OddsDetail, OddsComparisonResponse } from '../types';
 
 const POLL_INTERVAL_MS = 30 * 1000;
 
@@ -52,6 +52,8 @@ function fireBrowserNotification(alert: OddsAlert) {
 
 export default function OddsTracking() {
   const [selectedMatch, setSelectedMatch] = useState<string | undefined>();
+  const [selectedMatch2, setSelectedMatch2] = useState<string | undefined>();
+  const [compareMode, setCompareMode] = useState(false);
   const [selectedMatchInfo, setSelectedMatchInfo] = useState<{ team1: string; team2: string } | null>(null);
   const [notifEnabled, setNotifEnabled] = useState<boolean | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
@@ -59,7 +61,16 @@ export default function OddsTracking() {
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
   const notifiedRef = useRef<Set<string>>(new Set());
-  const { oddsTracking, fetchOddsTracking, fetchOddsAlerts, fetchOddsTrackingDetail, loading } = useDataStore();
+  const {
+    oddsTracking,
+    oddsComparison,
+    fetchOddsTracking,
+    fetchOddsComparison,
+    clearOddsComparison,
+    fetchOddsAlerts,
+    fetchOddsTrackingDetail,
+    loading
+  } = useDataStore();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTimestamp, setSelectedTimestamp] = useState<string | null>(null);
@@ -110,8 +121,29 @@ export default function OddsTracking() {
   }, [oddsTracking]);
 
   useEffect(() => {
+    if (compareMode) {
+      if (!selectedMatch2 && oddsTracking?.matchList && oddsTracking.matchList.length > 1) {
+        const other = oddsTracking.matchList.find(m => m.id !== selectedMatch);
+        if (other) setSelectedMatch2(other.id);
+      }
+    } else {
+      clearOddsComparison();
+      setSelectedMatch2(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareMode]);
+
+  useEffect(() => {
+    if (!compareMode) return;
     fetchOddsTracking(selectedMatch);
-  }, [fetchOddsTracking, selectedMatch]);
+  }, [compareMode, fetchOddsTracking, selectedMatch]);
+
+  useEffect(() => {
+    if (!compareMode) return;
+    if (selectedMatch && selectedMatch2 && selectedMatch !== selectedMatch2) {
+      fetchOddsComparison(selectedMatch, selectedMatch2);
+    }
+  }, [compareMode, fetchOddsComparison, selectedMatch, selectedMatch2]);
 
   useEffect(() => {
     if (timeRange === 'custom' && oddsTracking && oddsTracking.oddsHistory.length > 0) {
@@ -167,6 +199,23 @@ export default function OddsTracking() {
     if (match) {
       setSelectedMatchInfo({ team1: match.team1, team2: match.team2 });
     }
+    if (compareMode && matchId && selectedMatch2 === matchId && oddsTracking?.matchList) {
+      const other = oddsTracking.matchList.find(m => m.id !== matchId);
+      setSelectedMatch2(other?.id);
+    }
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+  const handleMatch2Change = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const matchId = e.target.value;
+    setSelectedMatch2(matchId || undefined);
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+  const handleToggleCompareMode = () => {
+    setCompareMode(prev => !prev);
     setCustomStart('');
     setCustomEnd('');
   };
@@ -265,7 +314,126 @@ export default function OddsTracking() {
     return { filteredHistory: filtered, filteredAnomalies: filteredAnom, filteredLatestAlert: latest, timeWindowLabel: label };
   }, [oddsTracking, timeRange, customStart, customEnd]);
 
-  const chartData = filteredHistory.length > 0 ? [
+  interface ComparisonFiltered {
+    timestamps: string[];
+    m1NormHome: number[];
+    m1NormAway: number[];
+    m2NormHome: number[];
+    m2NormAway: number[];
+    m1History: OddsHistoryPoint[];
+    m2History: OddsHistoryPoint[];
+    diffSeries: number[];
+    maxDiffRegion: OddsComparisonResponse['maxDiffRegion'];
+    label: string;
+  }
+
+  const comparisonFiltered: ComparisonFiltered | null = useMemo(() => {
+    if (!compareMode || !oddsComparison || oddsComparison.alignedTimestamps.length === 0) {
+      return null;
+    }
+    const timestamps = oddsComparison.alignedTimestamps;
+    const lastTs = timestamps[timestamps.length - 1];
+    const endTime = new Date(lastTs).getTime();
+    let startTime: number;
+    let windowEnd: number;
+    let label: string;
+
+    if (timeRange === 'custom') {
+      if (!customStart || !customEnd) {
+        return {
+          timestamps,
+          m1NormHome: oddsComparison.match1NormalizedHome,
+          m1NormAway: oddsComparison.match1NormalizedAway,
+          m2NormHome: oddsComparison.match2NormalizedHome,
+          m2NormAway: oddsComparison.match2NormalizedAway,
+          m1History: oddsComparison.match1History,
+          m2History: oddsComparison.match2History,
+          diffSeries: oddsComparison.diffSeries,
+          maxDiffRegion: oddsComparison.maxDiffRegion,
+          label: '自定义'
+        };
+      }
+      startTime = new Date(customStart).getTime();
+      windowEnd = new Date(customEnd).getTime();
+      label = `${customStart} ~ ${customEnd}`;
+    } else {
+      const preset = TIME_RANGE_PRESETS.find(p => p.value === timeRange);
+      const hours = preset?.hours || 24;
+      startTime = endTime - hours * 60 * 60 * 1000;
+      windowEnd = endTime;
+      label = preset?.label || '近24小时';
+    }
+
+    const idx = timestamps
+      .map((t, i) => ({ t, i }))
+      .filter(({ t }) => {
+        const ts = new Date(t).getTime();
+        return ts >= startTime && ts <= windowEnd;
+      })
+      .map(({ i }) => i);
+
+    if (idx.length === 0) {
+      return {
+        timestamps: [],
+        m1NormHome: [],
+        m1NormAway: [],
+        m2NormHome: [],
+        m2NormAway: [],
+        m1History: [],
+        m2History: [],
+        diffSeries: [],
+        maxDiffRegion: null,
+        label
+      };
+    }
+    const startIdx = idx[0];
+    const endIdx = idx[idx.length - 1];
+    const slice = <T,>(arr: T[]): T[] => arr.slice(startIdx, endIdx + 1);
+
+    const origRegion = oddsComparison.maxDiffRegion;
+    let adjustedRegion: OddsComparisonResponse['maxDiffRegion'] = null;
+    if (origRegion) {
+      const rs = Math.max(0, origRegion.startIndex - startIdx);
+      const re = Math.min(endIdx - startIdx, origRegion.endIndex - startIdx);
+      if (rs <= re) {
+        adjustedRegion = {
+          ...origRegion,
+          startIndex: rs,
+          endIndex: re,
+          startTimestamp: timestamps[startIdx + rs],
+          endTimestamp: timestamps[startIdx + re]
+        };
+      }
+    }
+
+    return {
+      timestamps: slice(timestamps),
+      m1NormHome: slice(oddsComparison.match1NormalizedHome),
+      m1NormAway: slice(oddsComparison.match1NormalizedAway),
+      m2NormHome: slice(oddsComparison.match2NormalizedHome),
+      m2NormAway: slice(oddsComparison.match2NormalizedAway),
+      m1History: slice(oddsComparison.match1History),
+      m2History: slice(oddsComparison.match2History),
+      diffSeries: slice(oddsComparison.diffSeries),
+      maxDiffRegion: adjustedRegion,
+      label
+    };
+  }, [compareMode, oddsComparison, timeRange, customStart, customEnd]);
+
+  const chartData = compareMode && comparisonFiltered && comparisonFiltered.timestamps.length > 0 ? [
+    {
+      x: comparisonFiltered.timestamps,
+      y: comparisonFiltered.m1NormHome,
+      name: `${oddsComparison!.match1.team1}（归一化）`,
+      color: '#3b82f6'
+    },
+    {
+      x: comparisonFiltered.timestamps,
+      y: comparisonFiltered.m2NormHome,
+      name: `${oddsComparison!.match2.team1}（归一化）`,
+      color: '#a855f7'
+    }
+  ] : filteredHistory.length > 0 ? [
     {
       x: filteredHistory.map(h => h.timestamp),
       y: filteredHistory.map(h => h.homeOdds),
@@ -281,8 +449,8 @@ export default function OddsTracking() {
   ] : [];
 
   const anomalies = filteredAnomalies;
-  const latestAlert = filteredLatestAlert;
-  const anomalyPoints = anomalies.map(a => {
+  const latestAlert = !compareMode ? filteredLatestAlert : null;
+  const anomalyPoints = compareMode ? [] : anomalies.map(a => {
     const point = filteredHistory.find(h => h.timestamp === a.timestamp);
     return {
       x: a.timestamp,
@@ -290,6 +458,15 @@ export default function OddsTracking() {
       color: a.changePercent < 0 ? '#ef4444' : '#f59e0b'
     };
   });
+
+  const highlightRanges = compareMode && comparisonFiltered?.maxDiffRegion ? [
+    {
+      startIndex: comparisonFiltered.maxDiffRegion.startIndex,
+      endIndex: comparisonFiltered.maxDiffRegion.endIndex,
+      color: 'rgba(249, 115, 22, 0.15)',
+      label: `差异最大 · 平均${(comparisonFiltered.maxDiffRegion.avgDiff * 100).toFixed(0)}%`
+    }
+  ] : undefined;
 
   const getAnomalyIcon = (anomaly: Anomaly) => {
     return anomaly.changePercent < 0 ?
@@ -314,7 +491,7 @@ export default function OddsTracking() {
             <select
               value={selectedMatch || ''}
               onChange={handleMatchChange}
-              className="px-4 py-2 pr-10 bg-esports-card border border-esports-border rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/50 appearance-none min-w-[300px]"
+              className="px-4 py-2 pr-10 bg-esports-card border border-blue-500/40 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/60 appearance-none min-w-[280px]"
             >
               <option value="">选择比赛</option>
               {oddsTracking?.matchList.map(m => (
@@ -323,6 +500,48 @@ export default function OddsTracking() {
             </select>
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
+
+          {compareMode && (
+            <>
+              <span className="text-slate-500 font-medium">VS</span>
+              <div className="relative">
+                <select
+                  value={selectedMatch2 || ''}
+                  onChange={handleMatch2Change}
+                  className="px-4 py-2 pr-10 bg-esports-card border border-purple-500/40 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/60 appearance-none min-w-[280px]"
+                >
+                  <option value="">选择对比比赛</option>
+                  {oddsTracking?.matchList.filter(m => m.id !== selectedMatch).map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+            </>
+          )}
+
+          <button
+            onClick={handleToggleCompareMode}
+            className={cn(
+              'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 border',
+              compareMode
+                ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white border-purple-500/50 shadow-sm'
+                : 'bg-esports-card text-slate-400 hover:text-white border-esports-border hover:border-slate-600'
+            )}
+            title={compareMode ? '关闭对比模式' : '开启对比模式'}
+          >
+            {compareMode ? (
+              <>
+                <X className="w-4 h-4" />
+                关闭对比
+              </>
+            ) : (
+              <>
+                <GitCompare className="w-4 h-4" />
+                对比模式
+              </>
+            )}
+          </button>
 
           <div className="ml-auto flex items-center gap-3">
             {lastCheckedAt && (
@@ -409,66 +628,186 @@ export default function OddsTracking() {
           </div>
         )}
 
-        {loading.oddsTracking ? (
+        {(loading.oddsTracking || (compareMode && loading.oddsComparison)) ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
           </div>
         ) : oddsTracking ? (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="stat-card">
-                <div className="flex items-center gap-3 mb-2">
-                  <Activity className="w-5 h-5 text-blue-400" />
-                  <span className="text-sm text-slate-400">主队赔率</span>
+            {compareMode && oddsComparison && comparisonFiltered ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="stat-card border-blue-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">比赛 A</span>
+                    </div>
+                    <span className="text-sm font-medium text-white truncate ml-2">{oddsComparison.match1.name}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">{oddsComparison.match1.team1} 赔率</p>
+                      <p className="text-2xl font-display font-bold text-blue-400">
+                        {formatOdds(comparisonFiltered.m1History[comparisonFiltered.m1History.length - 1]?.homeOdds || 0)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {formatOdds(oddsComparison.summary.match1HomeStart)} → {formatOdds(oddsComparison.summary.match1HomeEnd)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">{oddsComparison.match1.team2} 赔率</p>
+                      <p className="text-2xl font-display font-bold text-blue-300">
+                        {formatOdds(comparisonFiltered.m1History[comparisonFiltered.m1History.length - 1]?.awayOdds || 0)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {formatOdds(oddsComparison.summary.match1AwayStart)} → {formatOdds(oddsComparison.summary.match1AwayEnd)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-esports-border/30 text-xs text-slate-500">
+                    对齐数据点: {comparisonFiltered.timestamps.length} / 原始 {oddsComparison.summary.match1Points}
+                  </div>
                 </div>
-                <p className="text-3xl font-display font-bold text-white">
-                  {formatOdds(filteredHistory[filteredHistory.length - 1]?.homeOdds || 0)}
-                </p>
-              </div>
-              <div className="stat-card">
-                <div className="flex items-center gap-3 mb-2">
-                  <Activity className="w-5 h-5 text-green-400" />
-                  <span className="text-sm text-slate-400">客队赔率</span>
+
+                <div className="stat-card border-purple-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-purple-500" />
+                      <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">比赛 B</span>
+                    </div>
+                    <span className="text-sm font-medium text-white truncate ml-2">{oddsComparison.match2.name}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">{oddsComparison.match2.team1} 赔率</p>
+                      <p className="text-2xl font-display font-bold text-purple-400">
+                        {formatOdds(comparisonFiltered.m2History[comparisonFiltered.m2History.length - 1]?.homeOdds || 0)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {formatOdds(oddsComparison.summary.match2HomeStart)} → {formatOdds(oddsComparison.summary.match2HomeEnd)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">{oddsComparison.match2.team2} 赔率</p>
+                      <p className="text-2xl font-display font-bold text-purple-300">
+                        {formatOdds(comparisonFiltered.m2History[comparisonFiltered.m2History.length - 1]?.awayOdds || 0)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {formatOdds(oddsComparison.summary.match2AwayStart)} → {formatOdds(oddsComparison.summary.match2AwayEnd)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-esports-border/30 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">对齐数据点: {comparisonFiltered.timestamps.length} / 原始 {oddsComparison.summary.match2Points}</span>
+                    {comparisonFiltered.maxDiffRegion && (
+                      <span className="inline-flex items-center gap-1 text-orange-400 font-medium">
+                        <GitCompare className="w-3.5 h-3.5" />
+                        最大差异 {(comparisonFiltered.maxDiffRegion.avgDiff * 100).toFixed(0)}%
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <p className="text-3xl font-display font-bold text-white">
-                  {formatOdds(filteredHistory[filteredHistory.length - 1]?.awayOdds || 0)}
-                </p>
               </div>
-              <div className="stat-card">
-                <div className="flex items-center gap-3 mb-2">
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
-                  <span className="text-sm text-slate-400">异常检测</span>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="stat-card">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Activity className="w-5 h-5 text-blue-400" />
+                    <span className="text-sm text-slate-400">主队赔率</span>
+                  </div>
+                  <p className="text-3xl font-display font-bold text-white">
+                    {formatOdds(filteredHistory[filteredHistory.length - 1]?.homeOdds || 0)}
+                  </p>
                 </div>
-                <p className="text-3xl font-display font-bold text-white">
-                  {anomalies.length}
-                </p>
-              </div>
-              <div className="stat-card">
-                <div className="flex items-center gap-3 mb-2">
-                  <Clock className="w-5 h-5 text-purple-400" />
-                  <span className="text-sm text-slate-400">数据点数</span>
+                <div className="stat-card">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Activity className="w-5 h-5 text-green-400" />
+                    <span className="text-sm text-slate-400">客队赔率</span>
+                  </div>
+                  <p className="text-3xl font-display font-bold text-white">
+                    {formatOdds(filteredHistory[filteredHistory.length - 1]?.awayOdds || 0)}
+                  </p>
                 </div>
-                <p className="text-3xl font-display font-bold text-white">
-                  {filteredHistory.length}
-                </p>
+                <div className="stat-card">
+                  <div className="flex items-center gap-3 mb-2">
+                    <AlertTriangle className="w-5 h-5 text-red-400" />
+                    <span className="text-sm text-slate-400">异常检测</span>
+                  </div>
+                  <p className="text-3xl font-display font-bold text-white">
+                    {anomalies.length}
+                  </p>
+                </div>
+                <div className="stat-card">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Clock className="w-5 h-5 text-purple-400" />
+                    <span className="text-sm text-slate-400">数据点数</span>
+                  </div>
+                  <p className="text-3xl font-display font-bold text-white">
+                    {filteredHistory.length}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="stat-card mb-6">
-              <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-blue-400" />
-                赔率变动曲线 <span className="text-sm font-normal text-slate-400">({timeWindowLabel || '赛前24小时'})</span>
+              <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2 flex-wrap">
+                <Activity className={`w-5 h-5 ${compareMode ? 'text-purple-400' : 'text-blue-400'}`} />
+                {compareMode ? '赔率对比曲线（归一化）' : '赔率变动曲线'}
+                <span className="text-sm font-normal text-slate-400">
+                  ({compareMode ? comparisonFiltered?.label || '对比模式' : timeWindowLabel || '赛前24小时'})
+                </span>
+                {compareMode && comparisonFiltered?.maxDiffRegion && (
+                  <span className="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-400 text-xs font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    差异最大时段: {comparisonFiltered.maxDiffRegion.startTimestamp.split(' ')[1]} ~ {comparisonFiltered.maxDiffRegion.endTimestamp.split(' ')[1]}
+                  </span>
+                )}
               </h3>
               <LineChart
                 data={chartData}
                 anomalies={anomalyPoints}
+                highlightRanges={highlightRanges}
                 height={400}
-                yAxisTitle="赔率"
-                onPointClick={handlePointClick}
+                yAxisTitle={compareMode ? '归一化赔率（0~1）' : '赔率'}
+                onPointClick={compareMode ? undefined : handlePointClick}
               />
             </div>
 
-            {anomalies.length > 0 && (
+            {compareMode && oddsComparison && comparisonFiltered ? (
+              comparisonFiltered.maxDiffRegion && (
+                <div className="stat-card">
+                  <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2">
+                    <GitCompare className="w-5 h-5 text-orange-400" />
+                    差异最大时段
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
+                      <p className="text-sm text-slate-400 mb-1">时间范围</p>
+                      <p className="text-lg font-semibold text-white">
+                        {comparisonFiltered.maxDiffRegion.startTimestamp}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        ~ {comparisonFiltered.maxDiffRegion.endTimestamp}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-transparent border border-blue-500/20">
+                      <p className="text-sm text-slate-400 mb-1">平均差异</p>
+                      <p className="text-3xl font-display font-bold text-orange-400">
+                        {(comparisonFiltered.maxDiffRegion.avgDiff * 100).toFixed(1)}%
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">归一化赔率差</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-transparent border border-purple-500/20">
+                      <p className="text-sm text-slate-400 mb-1">峰值差异</p>
+                      <p className="text-3xl font-display font-bold text-purple-400">
+                        {(comparisonFiltered.maxDiffRegion.maxDiff * 100).toFixed(1)}%
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">窗口大小 {comparisonFiltered.maxDiffRegion.windowSize} 个点</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            ) : anomalies.length > 0 ? (
               <div className="stat-card">
                 <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-red-400" />
@@ -514,7 +853,7 @@ export default function OddsTracking() {
                   </table>
                 </div>
               </div>
-            )}
+            ) : null}
           </>
         ) : null}
 

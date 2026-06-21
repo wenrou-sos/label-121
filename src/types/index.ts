@@ -227,3 +227,48 @@ export interface OddsDetail {
   snapshot: OddsHistoryPoint[];
   anomalies: OddsSnapshotAnomaly[];
 }
+
+export interface OddsComparisonMatch {
+  id: string;
+  name: string;
+  team1: string;
+  team2: string;
+}
+
+export interface OddsComparisonMaxDiffRegion {
+  startTimestamp: string;
+  endTimestamp: string;
+  startIndex: number;
+  endIndex: number;
+  avgDiff: number;
+  maxDiff: number;
+  windowSize: number;
+}
+
+export interface OddsComparisonResponse {
+  match1: OddsComparisonMatch;
+  match2: OddsComparisonMatch;
+  matchList: MatchInfo[];
+  alignedTimestamps: string[];
+  match1History: OddsHistoryPoint[];
+  match2History: OddsHistoryPoint[];
+  match1NormalizedHome: number[];
+  match1NormalizedAway: number[];
+  match2NormalizedHome: number[];
+  match2NormalizedAway: number[];
+  diffSeries: number[];
+  maxDiffRegion: OddsComparisonMaxDiffRegion | null;
+  summary: {
+    match1Points: number;
+    match2Points: number;
+    alignedPoints: number;
+    match1HomeStart: number;
+    match1HomeEnd: number;
+    match1AwayStart: number;
+    match1AwayEnd: number;
+    match2HomeStart: number;
+    match2HomeEnd: number;
+    match2AwayStart: number;
+    match2AwayEnd: number;
+  };
+}
