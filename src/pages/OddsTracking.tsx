@@ -153,6 +153,13 @@ export default function OddsTracking() {
     };
   }, [fetchOddsAlerts, notifEnabled]);
 
+  useEffect(() => {
+    if (timeRange !== 'custom') {
+      setCustomStart('');
+      setCustomEnd('');
+    }
+  }, [timeRange]);
+
   const handleMatchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const matchId = e.target.value;
     setSelectedMatch(matchId || undefined);
@@ -160,11 +167,13 @@ export default function OddsTracking() {
     if (match) {
       setSelectedMatchInfo({ team1: match.team1, team2: match.team2 });
     }
+    setCustomStart('');
+    setCustomEnd('');
   };
 
-  const { filteredHistory, filteredAnomalies, timeWindowLabel } = useMemo(() => {
+  const { filteredHistory, filteredAnomalies, filteredLatestAlert, timeWindowLabel } = useMemo(() => {
     if (!oddsTracking || oddsTracking.oddsHistory.length === 0) {
-      return { filteredHistory: [], filteredAnomalies: [], timeWindowLabel: '' };
+      return { filteredHistory: [], filteredAnomalies: [], filteredLatestAlert: null, timeWindowLabel: '' };
     }
 
     const history = oddsTracking.oddsHistory;
@@ -172,43 +181,88 @@ export default function OddsTracking() {
     const endTime = new Date(lastPoint.timestamp).getTime();
     let startTime: number;
     let label = '';
+    let windowEnd: number;
 
     if (timeRange === 'custom') {
       if (!customStart || !customEnd) {
+        const allAnom = oddsTracking.anomalies || [];
+        const latestInAll = allAnom.length > 0
+          ? allAnom.reduce((a, b) => new Date(a.timestamp) > new Date(b.timestamp) ? a : b)
+          : null;
+        const alertConverted = latestInAll ? {
+          id: `anomaly-${latestInAll.timestamp}`,
+          matchId: oddsTracking.matchId,
+          matchName: oddsTracking.matchName,
+          team1: oddsTracking.team1,
+          team2: oddsTracking.team2,
+          team: latestInAll.type === 'home' ? oddsTracking.team1 : oddsTracking.team2,
+          type: latestInAll.type,
+          changePercent: latestInAll.changePercent,
+          startOdds: 0,
+          endOdds: 0,
+          timestamp: latestInAll.timestamp,
+          description: latestInAll.description
+        } as OddsAlert : null;
         return {
           filteredHistory: history,
-          filteredAnomalies: oddsTracking.anomalies || [],
+          filteredAnomalies: allAnom,
+          filteredLatestAlert: alertConverted || oddsTracking.latestAlert,
           timeWindowLabel: '自定义'
         };
       }
       startTime = new Date(customStart).getTime();
-      const endCustom = new Date(customEnd).getTime();
+      windowEnd = new Date(customEnd).getTime();
       label = `${customStart} ~ ${customEnd}`;
-      const filtered = history.filter(h => {
-        const t = new Date(h.timestamp).getTime();
-        return t >= startTime && t <= endCustom;
-      });
-      const filteredAnom = (oddsTracking.anomalies || []).filter(a => {
-        const t = new Date(a.timestamp).getTime();
-        return t >= startTime && t <= endCustom;
-      });
-      return { filteredHistory: filtered, filteredAnomalies: filteredAnom, timeWindowLabel: label };
+    } else {
+      const preset = TIME_RANGE_PRESETS.find(p => p.value === timeRange);
+      const hours = preset?.hours || 24;
+      startTime = endTime - hours * 60 * 60 * 1000;
+      windowEnd = endTime;
+      label = preset?.label || '近24小时';
     }
-
-    const preset = TIME_RANGE_PRESETS.find(p => p.value === timeRange);
-    const hours = preset?.hours || 24;
-    startTime = endTime - hours * 60 * 60 * 1000;
-    label = preset?.label || '近24小时';
 
     const filtered = history.filter(h => {
       const t = new Date(h.timestamp).getTime();
-      return t >= startTime && t <= endTime;
+      return t >= startTime && t <= windowEnd;
     });
     const filteredAnom = (oddsTracking.anomalies || []).filter(a => {
       const t = new Date(a.timestamp).getTime();
-      return t >= startTime && t <= endTime;
+      return t >= startTime && t <= windowEnd;
     });
-    return { filteredHistory: filtered, filteredAnomalies: filteredAnom, timeWindowLabel: label };
+
+    let latest: OddsAlert | null = null;
+    if (filteredAnom.length > 0) {
+      const latestAnom = filteredAnom.reduce((a, b) =>
+        new Date(a.timestamp) > new Date(b.timestamp) ? a : b
+      );
+      const pointIdx = filtered.findIndex(h => h.timestamp === latestAnom.timestamp);
+      const currPoint = pointIdx >= 0 ? filtered[pointIdx] : null;
+      const prevPoint = pointIdx > 0 ? filtered[pointIdx - 1] : currPoint;
+      const oddsKey = latestAnom.type === 'home' ? 'homeOdds' : 'awayOdds';
+      const endOdds = currPoint?.[oddsKey] || 0;
+      const startOdds = prevPoint?.[oddsKey] || endOdds;
+      latest = {
+        id: `anomaly-${latestAnom.timestamp}`,
+        matchId: oddsTracking.matchId,
+        matchName: oddsTracking.matchName,
+        team1: oddsTracking.team1,
+        team2: oddsTracking.team2,
+        team: latestAnom.type === 'home' ? oddsTracking.team1 : oddsTracking.team2,
+        type: latestAnom.type,
+        changePercent: latestAnom.changePercent,
+        startOdds,
+        endOdds,
+        timestamp: latestAnom.timestamp,
+        description: latestAnom.description
+      } as OddsAlert;
+    } else if (oddsTracking.latestAlert) {
+      const alertTime = new Date(oddsTracking.latestAlert.timestamp).getTime();
+      if (alertTime >= startTime && alertTime <= windowEnd) {
+        latest = oddsTracking.latestAlert;
+      }
+    }
+
+    return { filteredHistory: filtered, filteredAnomalies: filteredAnom, filteredLatestAlert: latest, timeWindowLabel: label };
   }, [oddsTracking, timeRange, customStart, customEnd]);
 
   const chartData = filteredHistory.length > 0 ? [
@@ -227,7 +281,7 @@ export default function OddsTracking() {
   ] : [];
 
   const anomalies = filteredAnomalies;
-  const latestAlert: OddsAlert | null = oddsTracking?.latestAlert || null;
+  const latestAlert = filteredLatestAlert;
   const anomalyPoints = anomalies.map(a => {
     const point = filteredHistory.find(h => h.timestamp === a.timestamp);
     return {
