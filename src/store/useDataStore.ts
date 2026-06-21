@@ -5,7 +5,9 @@ import type {
   UpsetAnalysisResponse,
   TeamHistoryResponse,
   LiveAnalysisResponse,
-  DashboardSummary
+  DashboardSummary,
+  OddsAlert,
+  OddsAlertsResponse
 } from '../types';
 
 const API_BASE = '/api';
@@ -17,15 +19,22 @@ interface DataState {
   teamHistory: TeamHistoryResponse | null;
   liveAnalysis: LiveAnalysisResponse | null;
   dashboardSummary: DashboardSummary | null;
+  oddsAlerts: OddsAlert[];
+  readAlertIds: Set<string>;
+  alertsPanelOpen: boolean;
   loading: Record<string, boolean>;
   error: Record<string, string | null>;
-  
+
   fetchBetDistribution: (league?: string) => Promise<void>;
   fetchOddsTracking: (matchId?: string) => Promise<void>;
   fetchUpsetAnalysis: () => Promise<void>;
   fetchTeamHistory: (team1?: string, team2?: string) => Promise<void>;
   fetchLiveAnalysis: () => Promise<void>;
   fetchDashboardSummary: () => Promise<void>;
+  fetchOddsAlerts: () => Promise<OddsAlert[]>;
+  markAlertRead: (alertId: string) => void;
+  markAllAlertsRead: () => void;
+  setAlertsPanelOpen: (open: boolean) => void;
 }
 
 export const useDataStore = create<DataState>((set) => ({
@@ -35,6 +44,9 @@ export const useDataStore = create<DataState>((set) => ({
   teamHistory: null,
   liveAnalysis: null,
   dashboardSummary: null,
+  oddsAlerts: [],
+  readAlertIds: new Set(),
+  alertsPanelOpen: false,
   loading: {},
   error: {},
 
@@ -125,5 +137,42 @@ export const useDataStore = create<DataState>((set) => ({
     } finally {
       set({ loading: { ...useDataStore.getState().loading, dashboardSummary: false } });
     }
+  },
+
+  fetchOddsAlerts: async () => {
+    set({ loading: { ...useDataStore.getState().loading, oddsAlerts: true } });
+    try {
+      const res = await fetch(`${API_BASE}/odds-alerts`);
+      const data: OddsAlertsResponse = await res.json();
+      const prevAlerts = useDataStore.getState().oddsAlerts;
+      const prevIds = new Set(prevAlerts.map(a => a.id));
+      const newAlerts = data.alerts;
+      set({
+        oddsAlerts: newAlerts,
+        error: { ...useDataStore.getState().error, oddsAlerts: null }
+      });
+      const fresh = newAlerts.filter(a => !prevIds.has(a.id));
+      return fresh;
+    } catch (err) {
+      set({ error: { ...useDataStore.getState().error, oddsAlerts: (err as Error).message } });
+      return [];
+    } finally {
+      set({ loading: { ...useDataStore.getState().loading, oddsAlerts: false } });
+    }
+  },
+
+  markAlertRead: (alertId: string) => {
+    const next: Set<string> = new Set<string>(useDataStore.getState().readAlertIds);
+    next.add(alertId);
+    set({ readAlertIds: next });
+  },
+
+  markAllAlertsRead: () => {
+    const all: string[] = useDataStore.getState().oddsAlerts.map(a => a.id);
+    set({ readAlertIds: new Set<string>(all) });
+  },
+
+  setAlertsPanelOpen: (open: boolean) => {
+    set({ alertsPanelOpen: open });
   }
 }));

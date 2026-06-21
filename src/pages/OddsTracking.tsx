@@ -1,25 +1,93 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useDataStore } from '../store/useDataStore';
 import { formatOdds, formatPercent, formatDateTime } from '../utils/formatters';
 import Header from '../components/layout/Header';
 import LineChart from '../components/charts/LineChart';
-import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown } from 'lucide-react';
-import type { OddsHistoryPoint, Anomaly } from '../types';
+import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff } from 'lucide-react';
+import type { OddsHistoryPoint, Anomaly, OddsAlert } from '../types';
+
+const POLL_INTERVAL_MS = 30 * 1000;
+
+async function ensureNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
+  if (Notification.permission === 'granted' || Notification.permission === 'denied') {
+    return Notification.permission;
+  }
+  try {
+    return await Notification.requestPermission();
+  } catch {
+    return 'denied';
+  }
+}
+
+function fireBrowserNotification(alert: OddsAlert) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const dir = alert.changePercent < 0 ? '下跌' : '上涨';
+    const tag = `odds-alert-${alert.id}`;
+    new Notification('赔率异动提醒', {
+      tag,
+      body: `${alert.matchName} · ${alert.team} 赔率${dir} ${formatPercent(Math.abs(alert.changePercent))}（${alert.startOdds.toFixed(2)} → ${alert.endOdds.toFixed(2)}）`,
+      icon: undefined,
+      silent: false
+    });
+  } catch {
+  }
+}
 
 export default function OddsTracking() {
   const [selectedMatch, setSelectedMatch] = useState<string | undefined>();
   const [selectedMatchInfo, setSelectedMatchInfo] = useState<{ team1: string; team2: string } | null>(null);
-  const { oddsTracking, fetchOddsTracking, loading } = useDataStore();
+  const [notifEnabled, setNotifEnabled] = useState<boolean | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const notifiedRef = useRef<Set<string>>(new Set());
+  const { oddsTracking, fetchOddsTracking, fetchOddsAlerts, loading } = useDataStore();
+
+  const handlePermission = useCallback(async () => {
+    const result = await ensureNotificationPermission();
+    setNotifEnabled(result === 'granted');
+  }, []);
 
   useEffect(() => {
-    fetchOddsTracking(selectedMatch);
-  }, [fetchOddsTracking, selectedMatch]);
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifEnabled(Notification.permission === 'granted');
+    }
+  }, []);
 
   useEffect(() => {
     if (oddsTracking) {
       setSelectedMatchInfo({ team1: oddsTracking.team1, team2: oddsTracking.team2 });
     }
   }, [oddsTracking]);
+
+  useEffect(() => {
+    fetchOddsTracking(selectedMatch);
+  }, [fetchOddsTracking, selectedMatch]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      const fresh = await fetchOddsAlerts();
+      if (!cancelled) {
+        setLastCheckedAt(new Date().toISOString());
+        if (fresh.length > 0 && notifEnabled) {
+          fresh.forEach(alert => {
+            if (!notifiedRef.current.has(alert.id)) {
+              notifiedRef.current.add(alert.id);
+              fireBrowserNotification(alert);
+            }
+          });
+        }
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [fetchOddsAlerts, notifEnabled]);
 
   const handleMatchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const matchId = e.target.value;
@@ -46,6 +114,7 @@ export default function OddsTracking() {
   ] : [];
 
   const anomalies = oddsTracking?.anomalies || [];
+  const latestAlert: OddsAlert | null = oddsTracking?.latestAlert || null;
   const anomalyPoints = anomalies.map(a => {
     const point = oddsTracking?.oddsHistory.find(h => h.timestamp === a.timestamp);
     return {
@@ -56,20 +125,20 @@ export default function OddsTracking() {
   });
 
   const getAnomalyIcon = (anomaly: Anomaly) => {
-    return anomaly.changePercent < 0 ? 
-      <TrendingDown className="w-4 h-4 text-red-400" /> : 
+    return anomaly.changePercent < 0 ?
+      <TrendingDown className="w-4 h-4 text-red-400" /> :
       <TrendingUp className="w-4 h-4 text-yellow-400" />;
   };
 
   return (
     <div className="min-h-screen bg-esports-bg">
-      <Header 
-        title="赔率变动追踪系统" 
-        subtitle="赛前24小时内赔率变动曲线与异常变动检测"
+      <Header
+        title="赔率变动追踪系统"
+        subtitle="赛前24小时内赔率变动曲线与异常变动检测 · 每30秒自动扫描"
       />
-      
+
       <main className="p-8 ml-64">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-4 mb-6">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-slate-400" />
             <span className="text-sm text-slate-400">选择比赛:</span>
@@ -87,7 +156,48 @@ export default function OddsTracking() {
             </select>
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
+
+          <div className="ml-auto flex items-center gap-3">
+            {lastCheckedAt && (
+              <span className="text-xs text-slate-500">
+                上次扫描: {formatDateTime(lastCheckedAt)}
+              </span>
+            )}
+            {notifEnabled === null ? null : notifEnabled ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-500/10 text-green-400 text-xs">
+                <Bell className="w-3.5 h-3.5" />
+                系统通知已开启
+              </span>
+            ) : (
+              <button
+                onClick={handlePermission}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 text-xs transition-colors"
+              >
+                <BellOff className="w-3.5 h-3.5" />
+                开启系统通知
+              </button>
+            )}
+          </div>
         </div>
+
+        {latestAlert && (
+          <div className="mb-6 p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5 flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-yellow-500/15 flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-yellow-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-semibold text-yellow-400">最新异动</span>
+                <span className="text-xs text-slate-500">{formatDateTime(latestAlert.timestamp)}</span>
+              </div>
+              <p className="text-sm text-white">
+                <span className="font-medium">{latestAlert.matchName}</span>
+                <span className="mx-2 text-slate-600">·</span>
+                {latestAlert.description}
+              </p>
+            </div>
+          </div>
+        )}
 
         {loading.oddsTracking ? (
           <div className="flex items-center justify-center h-64">
@@ -139,7 +249,7 @@ export default function OddsTracking() {
                 <Activity className="w-5 h-5 text-blue-400" />
                 赔率变动曲线（赛前24小时）
               </h3>
-              <LineChart 
+              <LineChart
                 data={chartData}
                 anomalies={anomalyPoints}
                 height={400}

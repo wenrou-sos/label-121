@@ -51,6 +51,7 @@ export interface OddsTrackingResponse {
   matchList: MatchInfo[];
   oddsHistory: OddsHistoryPoint[];
   anomalies: Anomaly[];
+  latestAlert: OddsAlert | null;
 }
 
 export interface RegionStat {
@@ -155,6 +156,26 @@ export interface LiveAnalysisResponse {
   valueOpportunities: LiveMatch[];
   totalLiveMatches: number;
   totalValueOpportunities: number;
+}
+
+export interface OddsAlert {
+  id: string;
+  matchId: string;
+  matchName: string;
+  team1: string;
+  team2: string;
+  team: string;
+  type: 'home' | 'away';
+  changePercent: number;
+  startOdds: number;
+  endOdds: number;
+  timestamp: string;
+  description: string;
+}
+
+export interface OddsAlertsResponse {
+  count: number;
+  alerts: OddsAlert[];
 }
 
 export interface DashboardSummary {

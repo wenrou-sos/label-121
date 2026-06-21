@@ -16,6 +16,7 @@ from routes.odds_routes import odds_bp
 from routes.upset_routes import upset_bp
 from routes.team_routes import team_bp
 from routes.live_routes import live_bp
+from routes.alert_routes import alert_bp
 
 app = Flask(__name__)
 CORS(app)
@@ -25,6 +26,7 @@ app.register_blueprint(odds_bp, url_prefix='/api')
 app.register_blueprint(upset_bp, url_prefix='/api')
 app.register_blueprint(team_bp, url_prefix='/api')
 app.register_blueprint(live_bp, url_prefix='/api')
+app.register_blueprint(alert_bp, url_prefix='/api')
 
 @app.route('/api/health')
 def health():

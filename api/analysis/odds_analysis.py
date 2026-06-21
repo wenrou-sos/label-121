@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from api.data_loader import load_odds_history, load_matches, load_teams
+from api.analysis.alert_analysis import get_latest_alert_for_match
 
 def detect_anomaly(odds_history: pd.DataFrame, threshold: float = 0.3):
     anomalies = []
@@ -63,13 +64,16 @@ def get_odds_tracking(match_id=None):
         })
     
     anomalies = detect_anomaly(odds_df)
-    
+    current_match_id_value = match_id if match_id else (all_match_ids[0] if len(all_match_ids) > 0 else None)
+    latest_alert = get_latest_alert_for_match(current_match_id_value)
+
     return {
-        'matchId': match_id if match_id else (all_match_ids[0] if len(all_match_ids) > 0 else None),
+        'matchId': current_match_id_value,
         'matchName': current_match['name'],
         'team1': current_match.get('team1', '主队'),
         'team2': current_match.get('team2', '客队'),
         'matchList': match_list,
         'oddsHistory': odds_history,
-        'anomalies': anomalies
+        'anomalies': anomalies,
+        'latestAlert': latest_alert
     }

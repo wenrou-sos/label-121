@@ -40,7 +40,7 @@ export default function UpsetAnalysis() {
     return matchesSearch && matchesLeague && u.isUpset;
   }) || [];
 
-  const leagues = [...new Set(upsetAnalysis?.upsetHistory.map(u => u.league) || [])];
+  const leagues: string[] = [...new Set<string>((upsetAnalysis?.upsetHistory || []).map((u: { league: string }) => u.league))];
 
   return (
     <div className="min-h-screen bg-esports-bg">

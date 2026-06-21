@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
+import AlertsPanel from "@/components/alerts/AlertsPanel";
 import Dashboard from "@/pages/Dashboard";
 import BetDistribution from "@/pages/BetDistribution";
 import OddsTracking from "@/pages/OddsTracking";
@@ -26,6 +27,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
+      <AlertsPanel />
     </div>
     </Router>
   );
