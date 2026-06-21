@@ -1,5 +1,6 @@
-import { Bell, Search, RefreshCw, Settings } from 'lucide-react';
+import { Bell, Search, RefreshCw, Settings, Command } from 'lucide-react';
 import { useDataStore } from '../../store/useDataStore';
+import { useSearchStore } from '../../store/useSearchStore';
 import { useMemo } from 'react';
 
 interface HeaderProps {
@@ -9,6 +10,7 @@ interface HeaderProps {
 
 export default function Header({ title, subtitle }: HeaderProps) {
   const { oddsAlerts, readAlertIds, setAlertsPanelOpen } = useDataStore();
+  const { setOpen: setSearchOpen } = useSearchStore();
 
   const unreadCount = useMemo(
     () => oddsAlerts.filter(a => !readAlertIds.has(a.id)).length,
@@ -23,14 +25,17 @@ export default function Header({ title, subtitle }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            placeholder="搜索赛事、战队..."
-            className="w-64 pl-10 pr-4 py-2 bg-esports-card/50 border border-esports-border/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
-          />
-        </div>
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="relative w-64 flex items-center gap-2 px-3 py-2 bg-esports-card/50 border border-esports-border/50 rounded-lg text-sm text-slate-400 hover:text-white hover:border-blue-500/50 transition-colors group"
+        >
+          <Search className="w-4 h-4 text-slate-500 group-hover:text-slate-400" />
+          <span className="flex-1 text-left">搜索赛事、战队...</span>
+          <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 bg-esports-bg/50 rounded text-xs text-slate-500 group-hover:text-slate-400">
+            <Command className="w-3 h-3" />
+            K
+          </kbd>
+        </button>
 
         <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-esports-card/50 transition-colors">
           <RefreshCw className="w-5 h-5" />

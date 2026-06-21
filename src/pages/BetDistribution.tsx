@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDataStore } from '../store/useDataStore';
 import { formatCurrency, formatPercent } from '../utils/formatters';
 import Header from '../components/layout/Header';
@@ -12,8 +13,16 @@ import type { BetDetailResponse, BetDetailRecord } from '../types';
 const BET_TYPE_KEYS = ['home_win', 'away_win', 'handicap', 'total', 'first_kill', 'first_turret'];
 
 export default function BetDistribution() {
-  const [selectedLeague, setSelectedLeague] = useState<string | undefined>();
+  const [searchParams] = useSearchParams();
+  const urlLeague = searchParams.get('league');
+  const [selectedLeague, setSelectedLeague] = useState<string | undefined>(urlLeague || undefined);
   const { betDistribution, fetchBetDistribution, loading, fetchBetDetails } = useDataStore();
+
+  useEffect(() => {
+    if (urlLeague && urlLeague !== selectedLeague) {
+      setSelectedLeague(urlLeague);
+    }
+  }, [urlLeague, selectedLeague]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ leagueId: string; leagueName: string; betType: string; betTypeName: string } | null>(null);

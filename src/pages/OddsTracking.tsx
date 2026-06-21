@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDataStore } from '../store/useDataStore';
 import { formatOdds, formatPercent, formatDateTime } from '../utils/formatters';
 import { cn } from '../lib/utils';
@@ -51,7 +52,9 @@ function fireBrowserNotification(alert: OddsAlert) {
 }
 
 export default function OddsTracking() {
-  const [selectedMatch, setSelectedMatch] = useState<string | undefined>();
+  const [searchParams] = useSearchParams();
+  const urlMatchId = searchParams.get('matchId');
+  const [selectedMatch, setSelectedMatch] = useState<string | undefined>(urlMatchId || undefined);
   const [selectedMatch2, setSelectedMatch2] = useState<string | undefined>();
   const [compareMode, setCompareMode] = useState(false);
   const [selectedMatchInfo, setSelectedMatchInfo] = useState<{ team1: string; team2: string } | null>(null);
@@ -113,6 +116,12 @@ export default function OddsTracking() {
       setNotifEnabled(Notification.permission === 'granted');
     }
   }, []);
+
+  useEffect(() => {
+    if (urlMatchId && urlMatchId !== selectedMatch) {
+      setSelectedMatch(urlMatchId);
+    }
+  }, [urlMatchId, selectedMatch]);
 
   useEffect(() => {
     if (oddsTracking) {
