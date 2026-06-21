@@ -206,6 +206,7 @@ export interface BetDetailResponse {
   betType: string;
   betTypeName: string;
   total: number;
+  totalAmount?: number;
   page: number;
   pageSize: number;
   totalPages: number;

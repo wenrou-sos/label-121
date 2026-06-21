@@ -83,10 +83,22 @@ def get_odds_tracking(match_id=None, timestamp=None):
     if timestamp:
         try:
             center_ts = pd.to_datetime(timestamp)
-            window_start = center_ts - timedelta(minutes=2)
-            window_end = center_ts + timedelta(minutes=2)
-            mask = (odds_df['timestamp'] >= window_start) & (odds_df['timestamp'] <= window_end)
-            snapshot_df = odds_df[mask].sort_values('timestamp')
+            odds_sorted = odds_df.sort_values('timestamp').reset_index(drop=True)
+            
+            center_idx = None
+            min_diff = None
+            for idx, row in odds_sorted.iterrows():
+                diff = abs((row['timestamp'] - center_ts).total_seconds())
+                if min_diff is None or diff < min_diff:
+                    min_diff = diff
+                    center_idx = idx
+            
+            if center_idx is not None:
+                window_start_idx = max(0, center_idx - 2)
+                window_end_idx = min(len(odds_sorted) - 1, center_idx + 2)
+                snapshot_df = odds_sorted.iloc[window_start_idx:window_end_idx + 1].copy()
+            else:
+                snapshot_df = pd.DataFrame(columns=odds_sorted.columns)
             
             snapshot = []
             for _, row in snapshot_df.iterrows():
@@ -98,7 +110,7 @@ def get_odds_tracking(match_id=None, timestamp=None):
                     'totalOdds': float(row['totalOdds'])
                 })
             
-            window_anomalies = _detect_anomalies_in_window(snapshot_df, window_minutes=5, threshold=0.3)
+            window_anomalies = _detect_anomalies_in_window(snapshot_df, window_minutes=300, threshold=0.3)
             formatted_anomalies = []
             for a in window_anomalies:
                 formatted_anomalies.append({
@@ -113,7 +125,8 @@ def get_odds_tracking(match_id=None, timestamp=None):
             result['detail'] = {
                 'centerTimestamp': center_ts.strftime('%Y-%m-%d %H:%M:%S'),
                 'snapshot': snapshot,
-                'anomalies': formatted_anomalies
+                'anomalies': formatted_anomalies,
+                'windowSize': len(snapshot)
             }
         except Exception as e:
             result['detail'] = {'error': f'timestamp 解析失败: {str(e)}'}
