@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDataStore } from '../store/useDataStore';
 import { useFavoriteStore } from '../store/useFavoriteStore';
@@ -7,36 +7,89 @@ import Header from '../components/layout/Header';
 import LineChart from '../components/charts/LineChart';
 import { Swords, Trophy, Clock, Target, ChevronDown, TrendingUp, TrendingDown, AlertCircle, Star } from 'lucide-react';
 
+const DEFAULT_TEAM1 = 'T1';
+const DEFAULT_TEAM2 = 'GEN';
+
 export default function TeamHistory() {
-  const [searchParams] = useSearchParams();
-  const [team1, setTeam1] = useState('T1');
-  const [team2, setTeam2] = useState('GEN');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTeam = searchParams.get('team');
+  const urlTeam2 = searchParams.get('team2');
+
+  const initialTeam1 = urlTeam || DEFAULT_TEAM1;
+  const initialTeam2 =
+    urlTeam2 && urlTeam2 !== initialTeam1
+      ? urlTeam2
+      : initialTeam1 === DEFAULT_TEAM1
+      ? DEFAULT_TEAM2
+      : DEFAULT_TEAM1;
+
+  const team1SelectRef = useRef<HTMLSelectElement>(null);
+  const team2SelectRef = useRef<HTMLSelectElement>(null);
+  const [team1, setTeam1] = useState(initialTeam1);
+  const [team2, setTeam2] = useState(initialTeam2);
   const { teamHistory, fetchTeamHistory, loading } = useDataStore();
   const { toggleFavorite, isFavorite } = useFavoriteStore();
 
   useEffect(() => {
-    const teamParam = searchParams.get('team');
-    if (teamParam && teamParam !== team1) {
-      if (teamParam === team2) {
-        const temp = team1;
-        setTeam1(teamParam);
-        setTeam2(temp);
+    const nextParams: Record<string, string> = {};
+    if (team1) nextParams.team = team1;
+    if (team2) nextParams.team2 = team2;
+    setSearchParams(nextParams, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team1, team2]);
+
+  useEffect(() => {
+    let nextTeam1 = team1;
+    let nextTeam2 = team2;
+    let changed = false;
+
+    if (urlTeam && urlTeam !== team1) {
+      if (urlTeam === team2) {
+        nextTeam1 = team2;
+        nextTeam2 = team1;
       } else {
-        setTeam1(teamParam);
+        nextTeam1 = urlTeam;
       }
+      changed = true;
+    }
+
+    if (urlTeam2 && urlTeam2 !== nextTeam2 && urlTeam2 !== nextTeam1) {
+      nextTeam2 = urlTeam2;
+      changed = true;
+    } else if (urlTeam2 === nextTeam1 && urlTeam && urlTeam !== nextTeam2) {
+      nextTeam2 = urlTeam2 === team1 ? team2 : DEFAULT_TEAM2;
+      changed = true;
+    }
+
+    if (changed) {
+      setTeam1(nextTeam1);
+      setTeam2(nextTeam2);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [urlTeam, urlTeam2]);
 
-  const findTeamById = (teamId: string) => {
-    return teamHistory?.allTeams.find(t => t.id === teamId);
+  const getTeamNameFromSelect = (teamId: string): string | undefined => {
+    const ref =
+      teamId === team1 ? team1SelectRef.current :
+      teamId === team2 ? team2SelectRef.current : null;
+    if (ref && ref.selectedOptions.length > 0) {
+      return ref.selectedOptions[0].textContent || undefined;
+    }
+    return undefined;
+  };
+
+  const resolveTeam = (teamId: string) => {
+    if (teamHistory?.allTeams) {
+      const found = teamHistory.allTeams.find(t => t.id === teamId);
+      if (found) return found;
+    }
+    const selectName = getTeamNameFromSelect(teamId);
+    return { id: teamId, name: selectName || teamId, league: '' };
   };
 
   const handleToggleFavorite = (teamId: string) => {
-    const team = findTeamById(teamId);
-    if (team) {
-      toggleFavorite(team);
-    }
+    const team = resolveTeam(teamId);
+    toggleFavorite(team);
   };
 
   useEffect(() => {
@@ -53,9 +106,8 @@ export default function TeamHistory() {
   }] : [];
 
   const handleSwapTeams = () => {
-    const temp = team1;
     setTeam1(team2);
-    setTeam2(temp);
+    setTeam2(team1);
   };
 
   return (
@@ -75,6 +127,7 @@ export default function TeamHistory() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <select
+                ref={team1SelectRef}
                 value={team1}
                 onChange={(e) => setTeam1(e.target.value)}
                 className="px-4 py-2 pr-10 bg-esports-card border border-blue-500/30 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/50 appearance-none min-w-[180px]"
@@ -103,6 +156,7 @@ export default function TeamHistory() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <select
+                ref={team2SelectRef}
                 value={team2}
                 onChange={(e) => setTeam2(e.target.value)}
                 className="px-4 py-2 pr-10 bg-esports-card border border-green-500/30 rounded-lg text-sm text-white focus:outline-none focus:border-green-500/50 appearance-none min-w-[180px]"

@@ -92,7 +92,7 @@ export default function Dashboard() {
       
       <main className="p-8 ml-64">
         {loading.dashboardSummary ? (
-          <div className="flex items-center justify-center h-64">
+          <div className="flex items-center justify-center h-64 mb-8">
             <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
           </div>
         ) : (
@@ -132,76 +132,76 @@ export default function Dashboard() {
                 </p>
               </div>
             )}
-
-            {favoriteTeams.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <Star className="w-5 h-5 text-yellow-400 fill-current" />
-                  <h3 className="font-display font-semibold text-lg text-white">我的关注战队</h3>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
-                    {favoriteTeams.length}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {favoriteTeams.map((team) => (
-                    <div
-                      key={team.id}
-                      className="group stat-card p-4 cursor-pointer hover:scale-[1.02] transition-all duration-300"
-                      onClick={() => navigate(`/team-history?team=${team.id}`)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
-                            <Star className="w-5 h-5 text-yellow-400 fill-current" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-white truncate">{team.name}</p>
-                            <p className="text-xs text-slate-400">{team.league}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFavorite(team.id);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all shrink-0"
-                          title="取消关注"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-esports-border/30 flex items-center justify-between">
-                        <span className="text-xs text-slate-400">查看交锋</span>
-                        <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <h3 className="font-display font-semibold text-lg text-white mb-4">功能模块</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {navCards.map((card, index) => (
-                <Link
-                  key={card.path}
-                  to={card.path}
-                  className="group stat-card hover:scale-[1.02] transition-all duration-300"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className={`p-3 rounded-xl bg-gradient-to-br ${card.color} shadow-lg mb-4`}>
-                      <card.icon className="w-6 h-6 text-white" />
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
-                  </div>
-                  <h4 className="font-display font-semibold text-white mb-2">{card.label}</h4>
-                  <p className="text-sm text-slate-400">{card.desc}</p>
-                </Link>
-              ))}
-            </div>
           </>
         )}
+
+        {favoriteTeams.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Star className="w-5 h-5 text-yellow-400 fill-current" />
+              <h3 className="font-display font-semibold text-lg text-white">我的关注战队</h3>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+                {favoriteTeams.length}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {favoriteTeams.map((team) => (
+                <div
+                  key={team.id}
+                  className="group stat-card p-4 cursor-pointer hover:scale-[1.02] transition-all duration-300"
+                  onClick={() => navigate(`/team-history?team=${team.id}`)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                        <Star className="w-5 h-5 text-yellow-400 fill-current" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white truncate">{team.name}</p>
+                        <p className="text-xs text-slate-400">{team.league}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFavorite(team.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all shrink-0"
+                      title="取消关注"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-esports-border/30 flex items-center justify-between">
+                    <span className="text-xs text-slate-400">查看交锋</span>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <h3 className="font-display font-semibold text-lg text-white mb-4">功能模块</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {navCards.map((card, index) => (
+            <Link
+              key={card.path}
+              to={card.path}
+              className="group stat-card hover:scale-[1.02] transition-all duration-300"
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
+              <div className="flex items-start justify-between">
+                <div className={`p-3 rounded-xl bg-gradient-to-br ${card.color} shadow-lg mb-4`}>
+                  <card.icon className="w-6 h-6 text-white" />
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
+              </div>
+              <h4 className="font-display font-semibold text-white mb-2">{card.label}</h4>
+              <p className="text-sm text-slate-400">{card.desc}</p>
+            </Link>
+          ))}
+        </div>
       </main>
     </div>
   );
