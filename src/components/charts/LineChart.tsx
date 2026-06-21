@@ -15,9 +15,10 @@ interface LineChartProps {
   yAxisTitle?: string;
   anomalies?: { x: string; y: number; color: string }[];
   className?: string;
+  onPointClick?: (point: { x: string; y: number; seriesName: string; xIndex: number }) => void;
 }
 
-export default function LineChart({ data, title, height = 400, yAxisTitle, anomalies, className }: LineChartProps) {
+export default function LineChart({ data, title, height = 400, yAxisTitle, anomalies, className, onPointClick }: LineChartProps) {
   const traces: Partial<Plotly.PlotData>[] = data.map((series) => ({
     type: 'scatter',
     mode: 'lines+markers',
@@ -97,6 +98,17 @@ export default function LineChart({ data, title, height = 400, yAxisTitle, anoma
     responsive: true
   };
 
+  const handleClick = (event: Readonly<Plotly.PlotMouseEvent>) => {
+    if (!onPointClick || !event.points || event.points.length === 0) return;
+    const pt = event.points[0];
+    onPointClick({
+      x: pt.x as string,
+      y: pt.y as number,
+      seriesName: (pt.data as Plotly.PlotData).name as string || '',
+      xIndex: typeof pt.pointIndex === 'number' ? pt.pointIndex : 0
+    });
+  };
+
   return (
     <div className={className || "w-full"}>
       <Plot
@@ -104,6 +116,7 @@ export default function LineChart({ data, title, height = 400, yAxisTitle, anoma
         layout={layout}
         config={config}
         style={{ width: '100%', height }}
+        onClick={onPointClick ? handleClick : undefined}
       />
     </div>
   );

@@ -10,9 +10,10 @@ interface HeatmapChartProps {
   title?: string;
   height?: number;
   className?: string;
+  onCellClick?: (point: { xIndex: number; yIndex: number; x: string; y: string; value: number }) => void;
 }
 
-export default function HeatmapChart({ z, x, y, title, height = 400, className }: HeatmapChartProps) {
+export default function HeatmapChart({ z, x, y, title, height = 400, className, onCellClick }: HeatmapChartProps) {
   const trace: Partial<Plotly.PlotData> = {
     type: 'heatmap',
     z: z,
@@ -66,6 +67,28 @@ export default function HeatmapChart({ z, x, y, title, height = 400, className }
     responsive: true
   };
 
+  const handleClick = (event: Readonly<Plotly.PlotMouseEvent>) => {
+    if (!onCellClick || !event.points || event.points.length === 0) return;
+    const pt = event.points[0];
+    const xIndex = typeof pt.pointIndex === 'number'
+      ? pt.pointIndex % x.length
+      : Array.isArray(pt.pointIndex)
+        ? (pt.pointIndex as number[])[0]
+        : 0;
+    const yIndex = typeof pt.pointNumber === 'number'
+      ? Math.floor(pt.pointNumber / x.length)
+      : 0;
+    const safeX = Math.max(0, Math.min(x.length - 1, xIndex));
+    const safeY = Math.max(0, Math.min(y.length - 1, yIndex));
+    onCellClick({
+      xIndex: safeX,
+      yIndex: safeY,
+      x: pt.x as string,
+      y: pt.y as string,
+      value: (pt as unknown as { z: number }).z as number
+    });
+  };
+
   return (
     <div className={className || "w-full"}>
       <Plot
@@ -73,6 +96,7 @@ export default function HeatmapChart({ z, x, y, title, height = 400, className }
         layout={layout}
         config={config}
         style={{ width: '100%', height }}
+        onClick={onCellClick ? handleClick : undefined}
       />
     </div>
   );

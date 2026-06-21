@@ -3,8 +3,10 @@ import { useDataStore } from '../store/useDataStore';
 import { formatOdds, formatPercent, formatDateTime } from '../utils/formatters';
 import Header from '../components/layout/Header';
 import LineChart from '../components/charts/LineChart';
-import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff } from 'lucide-react';
-import type { OddsHistoryPoint, Anomaly, OddsAlert } from '../types';
+import Modal from '../components/common/Modal';
+import Pagination from '../components/common/Pagination';
+import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff, Loader2, AlertOctagon } from 'lucide-react';
+import type { OddsHistoryPoint, Anomaly, OddsAlert, OddsDetail } from '../types';
 
 const POLL_INTERVAL_MS = 30 * 1000;
 
@@ -42,12 +44,43 @@ export default function OddsTracking() {
   const [notifEnabled, setNotifEnabled] = useState<boolean | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const notifiedRef = useRef<Set<string>>(new Set());
-  const { oddsTracking, fetchOddsTracking, fetchOddsAlerts, loading } = useDataStore();
+  const { oddsTracking, fetchOddsTracking, fetchOddsAlerts, fetchOddsTrackingDetail, loading } = useDataStore();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedTimestamp, setSelectedTimestamp] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<OddsDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [currentDetailPage, setCurrentDetailPage] = useState(1);
 
   const handlePermission = useCallback(async () => {
     const result = await ensureNotificationPermission();
     setNotifEnabled(result === 'granted');
   }, []);
+
+  useEffect(() => {
+    if (!selectedTimestamp || !modalOpen || !oddsTracking) return;
+    const load = async () => {
+      setDetailLoading(true);
+      try {
+        const data = await fetchOddsTrackingDetail(oddsTracking.matchId, selectedTimestamp);
+        if (data?.detail) {
+          setDetailData(data.detail);
+        } else {
+          setDetailData(null);
+        }
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+    load();
+  }, [selectedTimestamp, modalOpen, oddsTracking, fetchOddsTrackingDetail]);
+
+  const handlePointClick = (point: { x: string; y: number; seriesName: string; xIndex: number }) => {
+    setSelectedTimestamp(point.x);
+    setCurrentDetailPage(1);
+    setDetailData(null);
+    setModalOpen(true);
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -254,6 +287,7 @@ export default function OddsTracking() {
                 anomalies={anomalyPoints}
                 height={400}
                 yAxisTitle="赔率"
+                onPointClick={handlePointClick}
               />
             </div>
 
@@ -306,6 +340,98 @@ export default function OddsTracking() {
             )}
           </>
         ) : null}
+
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={selectedTimestamp ? `${selectedTimestamp.split(' ')[1] || selectedTimestamp} 赔率快照` : ''}
+          maxWidth="max-w-4xl"
+        >
+          {detailLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            </div>
+          ) : detailData ? (
+            <div>
+              {detailData.anomalies.length > 0 && (
+                <div className="mb-6 p-4 rounded-xl border border-red-500/30 bg-red-500/5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertOctagon className="w-5 h-5 text-red-400" />
+                    <span className="text-sm font-semibold text-red-400">检测到异常波动（{detailData.anomalies.length} 条）</span>
+                  </div>
+                  <div className="space-y-2">
+                    {detailData.anomalies.map((a, idx) => (
+                      <div key={idx} className="flex items-center gap-3 text-sm">
+                        <span className="text-slate-400 font-mono">{a.timestamp}</span>
+                        <span className={`font-medium ${a.changePercent < 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+                          {formatPercent(a.changePercent)}
+                        </span>
+                        <span className="text-white">{a.description}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <h4 className="text-sm font-semibold text-white mb-3">时间点前后 2 分钟快照</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-esports-border/50">
+                      <th className="px-4 py-3 text-left text-slate-400 font-medium">时间</th>
+                      <th className="px-4 py-3 text-right text-slate-400 font-medium">
+                        {selectedMatchInfo?.team1 || '主队'}
+                      </th>
+                      <th className="px-4 py-3 text-right text-slate-400 font-medium">
+                        {selectedMatchInfo?.team2 || '客队'}
+                      </th>
+                      <th className="px-4 py-3 text-right text-slate-400 font-medium">让分盘</th>
+                      <th className="px-4 py-3 text-right text-slate-400 font-medium">大小盘</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const pageSize = 10;
+                      const total = detailData.snapshot.length;
+                      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                      const start = (currentDetailPage - 1) * pageSize;
+                      const end = start + pageSize;
+                      const pageData = detailData.snapshot.slice(start, end);
+                      return (
+                        <>
+                          {pageData.map((s: OddsHistoryPoint, idx) => (
+                            <tr key={idx} className="border-b border-esports-border/30 hover:bg-esports-card/30 transition-colors">
+                              <td className="px-4 py-3 text-white font-mono">{s.timestamp}</td>
+                              <td className="px-4 py-3 text-right text-blue-400 font-medium">{formatOdds(s.homeOdds)}</td>
+                              <td className="px-4 py-3 text-right text-green-400 font-medium">{formatOdds(s.awayOdds)}</td>
+                              <td className="px-4 py-3 text-right text-purple-400 font-medium">{formatOdds(s.handicapOdds)}</td>
+                              <td className="px-4 py-3 text-right text-orange-400 font-medium">{formatOdds(s.totalOdds)}</td>
+                            </tr>
+                          ))}
+                          <tr>
+                            <td colSpan={5}>
+                              <Pagination
+                                currentPage={currentDetailPage}
+                                totalPages={totalPages}
+                                totalItems={total}
+                                pageSize={pageSize}
+                                onPageChange={setCurrentDetailPage}
+                              />
+                            </td>
+                          </tr>
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-16 text-slate-500">
+              暂无快照数据
+            </div>
+          )}
+        </Modal>
       </main>
     </div>
   );

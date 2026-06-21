@@ -7,7 +7,8 @@ import type {
   LiveAnalysisResponse,
   DashboardSummary,
   OddsAlert,
-  OddsAlertsResponse
+  OddsAlertsResponse,
+  BetDetailResponse
 } from '../types';
 
 const API_BASE = '/api';
@@ -32,6 +33,8 @@ interface DataState {
   fetchLiveAnalysis: () => Promise<void>;
   fetchDashboardSummary: () => Promise<void>;
   fetchOddsAlerts: () => Promise<OddsAlert[]>;
+  fetchBetDetails: (leagueId: string, betType: string, page?: number, pageSize?: number) => Promise<BetDetailResponse | null>;
+  fetchOddsTrackingDetail: (matchId: string, timestamp: string) => Promise<OddsTrackingResponse | null>;
   markAlertRead: (alertId: string) => void;
   markAllAlertsRead: () => void;
   setAlertsPanelOpen: (open: boolean) => void;
@@ -174,5 +177,32 @@ export const useDataStore = create<DataState>((set) => ({
 
   setAlertsPanelOpen: (open: boolean) => {
     set({ alertsPanelOpen: open });
+  },
+
+  fetchBetDetails: async (leagueId: string, betType: string, page = 1, pageSize = 10) => {
+    try {
+      const params = new URLSearchParams({
+        leagueId,
+        betType,
+        page: String(page),
+        pageSize: String(pageSize)
+      });
+      const res = await fetch(`${API_BASE}/bet-details?${params.toString()}`);
+      const data: BetDetailResponse = await res.json();
+      return data;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  fetchOddsTrackingDetail: async (matchId: string, timestamp: string) => {
+    try {
+      const params = new URLSearchParams({ matchId, timestamp });
+      const res = await fetch(`${API_BASE}/odds-tracking?${params.toString()}`);
+      const data: OddsTrackingResponse = await res.json();
+      return data;
+    } catch (err) {
+      return null;
+    }
   }
 }));

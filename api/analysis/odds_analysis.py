@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime, timedelta
 from api.data_loader import load_odds_history, load_matches, load_teams
-from api.analysis.alert_analysis import get_latest_alert_for_match
+from api.analysis.alert_analysis import get_latest_alert_for_match, _detect_anomalies_in_window
 
 def detect_anomaly(odds_history: pd.DataFrame, threshold: float = 0.3):
     anomalies = []
@@ -18,7 +19,7 @@ def detect_anomaly(odds_history: pd.DataFrame, threshold: float = 0.3):
             })
     return anomalies
 
-def get_odds_tracking(match_id=None):
+def get_odds_tracking(match_id=None, timestamp=None):
     all_odds_df = load_odds_history()
     matches_df = load_matches()
     teams_df = load_teams()
@@ -67,7 +68,7 @@ def get_odds_tracking(match_id=None):
     current_match_id_value = match_id if match_id else (all_match_ids[0] if len(all_match_ids) > 0 else None)
     latest_alert = get_latest_alert_for_match(current_match_id_value)
 
-    return {
+    result = {
         'matchId': current_match_id_value,
         'matchName': current_match['name'],
         'team1': current_match.get('team1', '主队'),
@@ -75,5 +76,46 @@ def get_odds_tracking(match_id=None):
         'matchList': match_list,
         'oddsHistory': odds_history,
         'anomalies': anomalies,
-        'latestAlert': latest_alert
+        'latestAlert': latest_alert,
+        'detail': None
     }
+
+    if timestamp:
+        try:
+            center_ts = pd.to_datetime(timestamp)
+            window_start = center_ts - timedelta(minutes=2)
+            window_end = center_ts + timedelta(minutes=2)
+            mask = (odds_df['timestamp'] >= window_start) & (odds_df['timestamp'] <= window_end)
+            snapshot_df = odds_df[mask].sort_values('timestamp')
+            
+            snapshot = []
+            for _, row in snapshot_df.iterrows():
+                snapshot.append({
+                    'timestamp': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'homeOdds': float(row['homeOdds']),
+                    'awayOdds': float(row['awayOdds']),
+                    'handicapOdds': float(row['handicapOdds']),
+                    'totalOdds': float(row['totalOdds'])
+                })
+            
+            window_anomalies = _detect_anomalies_in_window(snapshot_df, window_minutes=5, threshold=0.3)
+            formatted_anomalies = []
+            for a in window_anomalies:
+                formatted_anomalies.append({
+                    'timestamp': a['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(a['timestamp'], 'strftime') else str(a['timestamp']),
+                    'changePercent': float(a['changePercent']),
+                    'type': a['type'],
+                    'startOdds': float(a['startOdds']),
+                    'endOdds': float(a['endOdds']),
+                    'description': f'{("主队" if a["type"] == "home" else "客队")}赔率{"下跌" if a["changePercent"] < 0 else "上涨"}{abs(a["changePercent"])*100:.1f}%（{a["startOdds"]:.2f} → {a["endOdds"]:.2f}）'
+                })
+            
+            result['detail'] = {
+                'centerTimestamp': center_ts.strftime('%Y-%m-%d %H:%M:%S'),
+                'snapshot': snapshot,
+                'anomalies': formatted_anomalies
+            }
+        except Exception as e:
+            result['detail'] = {'error': f'timestamp 解析失败: {str(e)}'}
+
+    return result

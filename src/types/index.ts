@@ -52,6 +52,7 @@ export interface OddsTrackingResponse {
   oddsHistory: OddsHistoryPoint[];
   anomalies: Anomaly[];
   latestAlert: OddsAlert | null;
+  detail: OddsDetail | null;
 }
 
 export interface RegionStat {
@@ -186,4 +187,42 @@ export interface DashboardSummary {
   anomaliesDetected: number;
   avgUpsetRate: number;
   biggestUpset: UpsetEvent | null;
+}
+
+export interface BetDetailRecord {
+  betId: string;
+  matchId: string;
+  matchName: string;
+  userId: string;
+  amount: number;
+  odds: number;
+  side: string;
+  betTime: string;
+}
+
+export interface BetDetailResponse {
+  leagueId: string;
+  leagueName: string;
+  betType: string;
+  betTypeName: string;
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  records: BetDetailRecord[];
+}
+
+export interface OddsSnapshotAnomaly {
+  timestamp: string;
+  changePercent: number;
+  type: 'home' | 'away';
+  startOdds: number;
+  endOdds: number;
+  description: string;
+}
+
+export interface OddsDetail {
+  centerTimestamp: string;
+  snapshot: OddsHistoryPoint[];
+  anomalies: OddsSnapshotAnomaly[];
 }
