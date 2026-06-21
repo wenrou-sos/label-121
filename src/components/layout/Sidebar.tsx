@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -6,8 +6,11 @@ import {
   Zap, 
   Swords, 
   Radio,
-  Trophy
+  Trophy,
+  Star,
+  X
 } from 'lucide-react';
+import { useFavoriteStore } from '../../store/useFavoriteStore';
 
 const navItems = [
   { path: '/', label: '总览仪表盘', icon: LayoutDashboard },
@@ -19,6 +22,13 @@ const navItems = [
 ];
 
 export default function Sidebar() {
+  const navigate = useNavigate();
+  const { favoriteTeams, removeFavorite } = useFavoriteStore();
+
+  const handleTeamClick = (teamId: string) => {
+    navigate(`/team-history?team=${teamId}`);
+  };
+
   return (
     <aside className="w-64 h-screen bg-esports-surface/80 backdrop-blur-xl border-r border-esports-border/50 flex flex-col fixed left-0 top-0 z-40">
       <div className="p-6 border-b border-esports-border/50">
@@ -47,6 +57,41 @@ export default function Sidebar() {
             <span className="font-medium text-sm">{item.label}</span>
           </NavLink>
         ))}
+
+        {favoriteTeams.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-esports-border/30">
+            <div className="flex items-center gap-2 px-4 mb-3">
+              <Star className="w-4 h-4 text-yellow-400 fill-current" />
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                关注战队 ({favoriteTeams.length})
+              </span>
+            </div>
+            <div className="space-y-1">
+              {favoriteTeams.map((team) => (
+                <div
+                  key={team.id}
+                  className="group nav-item cursor-pointer justify-between"
+                  onClick={() => handleTeamClick(team.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-2 h-2 rounded-full bg-yellow-400/70 shrink-0" />
+                    <span className="font-medium text-sm truncate">{team.name}</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeFavorite(team.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all shrink-0"
+                    title="取消关注"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </nav>
       
       <div className="p-4 border-t border-esports-border/50">

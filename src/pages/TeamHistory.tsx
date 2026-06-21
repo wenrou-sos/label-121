@@ -1,14 +1,43 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDataStore } from '../store/useDataStore';
+import { useFavoriteStore } from '../store/useFavoriteStore';
 import { formatPercent, formatDuration, formatDate } from '../utils/formatters';
 import Header from '../components/layout/Header';
 import LineChart from '../components/charts/LineChart';
-import { Swords, Trophy, Clock, Target, ChevronDown, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { Swords, Trophy, Clock, Target, ChevronDown, TrendingUp, TrendingDown, AlertCircle, Star } from 'lucide-react';
 
 export default function TeamHistory() {
+  const [searchParams] = useSearchParams();
   const [team1, setTeam1] = useState('T1');
   const [team2, setTeam2] = useState('GEN');
   const { teamHistory, fetchTeamHistory, loading } = useDataStore();
+  const { toggleFavorite, isFavorite } = useFavoriteStore();
+
+  useEffect(() => {
+    const teamParam = searchParams.get('team');
+    if (teamParam && teamParam !== team1) {
+      if (teamParam === team2) {
+        const temp = team1;
+        setTeam1(teamParam);
+        setTeam2(temp);
+      } else {
+        setTeam1(teamParam);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const findTeamById = (teamId: string) => {
+    return teamHistory?.allTeams.find(t => t.id === teamId);
+  };
+
+  const handleToggleFavorite = (teamId: string) => {
+    const team = findTeamById(teamId);
+    if (team) {
+      toggleFavorite(team);
+    }
+  };
 
   useEffect(() => {
     if (team1 && team2 && team1 !== team2) {
@@ -43,32 +72,58 @@ export default function TeamHistory() {
             <span className="text-sm text-slate-400">选择战队:</span>
           </div>
           
-          <div className="relative">
-            <select
-              value={team1}
-              onChange={(e) => setTeam1(e.target.value)}
-              className="px-4 py-2 pr-10 bg-esports-card border border-blue-500/30 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/50 appearance-none min-w-[180px]"
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select
+                value={team1}
+                onChange={(e) => setTeam1(e.target.value)}
+                className="px-4 py-2 pr-10 bg-esports-card border border-blue-500/30 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/50 appearance-none min-w-[180px]"
+              >
+                {teamHistory?.allTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+            <button
+              onClick={() => handleToggleFavorite(team1)}
+              className={`p-2 rounded-lg transition-all duration-200 ${
+                isFavorite(team1)
+                  ? 'text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20'
+                  : 'text-slate-500 hover:text-yellow-400 hover:bg-slate-700/50'
+              }`}
+              title={isFavorite(team1) ? '取消收藏' : '收藏战队'}
             >
-              {teamHistory?.allTeams.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <Star className={`w-5 h-5 ${isFavorite(team1) ? 'fill-current' : ''}`} />
+            </button>
           </div>
           
           <span className="text-slate-500">VS</span>
           
-          <div className="relative">
-            <select
-              value={team2}
-              onChange={(e) => setTeam2(e.target.value)}
-              className="px-4 py-2 pr-10 bg-esports-card border border-green-500/30 rounded-lg text-sm text-white focus:outline-none focus:border-green-500/50 appearance-none min-w-[180px]"
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select
+                value={team2}
+                onChange={(e) => setTeam2(e.target.value)}
+                className="px-4 py-2 pr-10 bg-esports-card border border-green-500/30 rounded-lg text-sm text-white focus:outline-none focus:border-green-500/50 appearance-none min-w-[180px]"
+              >
+                {teamHistory?.allTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+            <button
+              onClick={() => handleToggleFavorite(team2)}
+              className={`p-2 rounded-lg transition-all duration-200 ${
+                isFavorite(team2)
+                  ? 'text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20'
+                  : 'text-slate-500 hover:text-yellow-400 hover:bg-slate-700/50'
+              }`}
+              title={isFavorite(team2) ? '取消收藏' : '收藏战队'}
             >
-              {teamHistory?.allTeams.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <Star className={`w-5 h-5 ${isFavorite(team2) ? 'fill-current' : ''}`} />
+            </button>
           </div>
 
           <button 

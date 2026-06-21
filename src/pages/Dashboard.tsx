@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, 
   Activity, 
@@ -10,9 +10,12 @@ import {
   Calendar,
   AlertTriangle,
   Target,
-  ChevronRight
+  ChevronRight,
+  Star,
+  X
 } from 'lucide-react';
 import { useDataStore } from '../store/useDataStore';
+import { useFavoriteStore } from '../store/useFavoriteStore';
 import { formatCurrency, formatPercent } from '../utils/formatters';
 import Header from '../components/layout/Header';
 
@@ -25,7 +28,9 @@ const navCards = [
 ];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { dashboardSummary, fetchDashboardSummary, loading } = useDataStore();
+  const { favoriteTeams, removeFavorite } = useFavoriteStore();
 
   useEffect(() => {
     fetchDashboardSummary();
@@ -125,6 +130,53 @@ export default function Dashboard() {
                   {' 获胜，爆冷指数 '}
                   <span className="text-yellow-400 font-bold">{dashboardSummary.biggestUpset.upsetMagnitude.toFixed(1)}</span>
                 </p>
+              </div>
+            )}
+
+            {favoriteTeams.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <Star className="w-5 h-5 text-yellow-400 fill-current" />
+                  <h3 className="font-display font-semibold text-lg text-white">我的关注战队</h3>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+                    {favoriteTeams.length}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {favoriteTeams.map((team) => (
+                    <div
+                      key={team.id}
+                      className="group stat-card p-4 cursor-pointer hover:scale-[1.02] transition-all duration-300"
+                      onClick={() => navigate(`/team-history?team=${team.id}`)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                            <Star className="w-5 h-5 text-yellow-400 fill-current" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-white truncate">{team.name}</p>
+                            <p className="text-xs text-slate-400">{team.league}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFavorite(team.id);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all shrink-0"
+                          title="取消关注"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-esports-border/30 flex items-center justify-between">
+                        <span className="text-xs text-slate-400">查看交锋</span>
+                        <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
