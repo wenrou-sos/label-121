@@ -1,14 +1,25 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useDataStore } from '../store/useDataStore';
 import { formatOdds, formatPercent, formatDateTime } from '../utils/formatters';
+import { cn } from '../lib/utils';
 import Header from '../components/layout/Header';
 import LineChart from '../components/charts/LineChart';
 import Modal from '../components/common/Modal';
 import Pagination from '../components/common/Pagination';
-import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff, Loader2, AlertOctagon } from 'lucide-react';
+import { Activity, AlertTriangle, TrendingDown, TrendingUp, Clock, ChevronDown, Bell, BellOff, Loader2, AlertOctagon, Calendar, SlidersHorizontal } from 'lucide-react';
 import type { OddsHistoryPoint, Anomaly, OddsAlert, OddsDetail } from '../types';
 
 const POLL_INTERVAL_MS = 30 * 1000;
+
+type TimeRangePreset = '1h' | '6h' | '12h' | '24h' | 'custom';
+
+const TIME_RANGE_PRESETS: { value: TimeRangePreset; label: string; hours: number }[] = [
+  { value: '1h', label: '近1小时', hours: 1 },
+  { value: '6h', label: '近6小时', hours: 6 },
+  { value: '12h', label: '近12小时', hours: 12 },
+  { value: '24h', label: '近24小时', hours: 24 },
+  { value: 'custom', label: '自定义', hours: 0 },
+];
 
 async function ensureNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
@@ -35,6 +46,7 @@ function fireBrowserNotification(alert: OddsAlert) {
       silent: false
     });
   } catch {
+    // Notification API may throw on some browsers
   }
 }
 
@@ -43,6 +55,9 @@ export default function OddsTracking() {
   const [selectedMatchInfo, setSelectedMatchInfo] = useState<{ team1: string; team2: string } | null>(null);
   const [notifEnabled, setNotifEnabled] = useState<boolean | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRangePreset>('24h');
+  const [customStart, setCustomStart] = useState<string>('');
+  const [customEnd, setCustomEnd] = useState<string>('');
   const notifiedRef = useRef<Set<string>>(new Set());
   const { oddsTracking, fetchOddsTracking, fetchOddsAlerts, fetchOddsTrackingDetail, loading } = useDataStore();
 
@@ -99,6 +114,22 @@ export default function OddsTracking() {
   }, [fetchOddsTracking, selectedMatch]);
 
   useEffect(() => {
+    if (timeRange === 'custom' && oddsTracking && oddsTracking.oddsHistory.length > 0) {
+      if (!customStart || !customEnd) {
+        const first = oddsTracking.oddsHistory[0].timestamp;
+        const last = oddsTracking.oddsHistory[oddsTracking.oddsHistory.length - 1].timestamp;
+        const toLocalInput = (ts: string) => {
+          const d = new Date(ts);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+        setCustomStart(toLocalInput(first));
+        setCustomEnd(toLocalInput(last));
+      }
+    }
+  }, [timeRange, oddsTracking, customStart, customEnd]);
+
+  useEffect(() => {
     let cancelled = false;
     const tick = async () => {
       const fresh = await fetchOddsAlerts();
@@ -131,25 +162,74 @@ export default function OddsTracking() {
     }
   };
 
-  const chartData = oddsTracking ? [
+  const { filteredHistory, filteredAnomalies, timeWindowLabel } = useMemo(() => {
+    if (!oddsTracking || oddsTracking.oddsHistory.length === 0) {
+      return { filteredHistory: [], filteredAnomalies: [], timeWindowLabel: '' };
+    }
+
+    const history = oddsTracking.oddsHistory;
+    const lastPoint = history[history.length - 1];
+    const endTime = new Date(lastPoint.timestamp).getTime();
+    let startTime: number;
+    let label = '';
+
+    if (timeRange === 'custom') {
+      if (!customStart || !customEnd) {
+        return {
+          filteredHistory: history,
+          filteredAnomalies: oddsTracking.anomalies || [],
+          timeWindowLabel: '自定义'
+        };
+      }
+      startTime = new Date(customStart).getTime();
+      const endCustom = new Date(customEnd).getTime();
+      label = `${customStart} ~ ${customEnd}`;
+      const filtered = history.filter(h => {
+        const t = new Date(h.timestamp).getTime();
+        return t >= startTime && t <= endCustom;
+      });
+      const filteredAnom = (oddsTracking.anomalies || []).filter(a => {
+        const t = new Date(a.timestamp).getTime();
+        return t >= startTime && t <= endCustom;
+      });
+      return { filteredHistory: filtered, filteredAnomalies: filteredAnom, timeWindowLabel: label };
+    }
+
+    const preset = TIME_RANGE_PRESETS.find(p => p.value === timeRange);
+    const hours = preset?.hours || 24;
+    startTime = endTime - hours * 60 * 60 * 1000;
+    label = preset?.label || '近24小时';
+
+    const filtered = history.filter(h => {
+      const t = new Date(h.timestamp).getTime();
+      return t >= startTime && t <= endTime;
+    });
+    const filteredAnom = (oddsTracking.anomalies || []).filter(a => {
+      const t = new Date(a.timestamp).getTime();
+      return t >= startTime && t <= endTime;
+    });
+    return { filteredHistory: filtered, filteredAnomalies: filteredAnom, timeWindowLabel: label };
+  }, [oddsTracking, timeRange, customStart, customEnd]);
+
+  const chartData = filteredHistory.length > 0 ? [
     {
-      x: oddsTracking.oddsHistory.map(h => h.timestamp),
-      y: oddsTracking.oddsHistory.map(h => h.homeOdds),
+      x: filteredHistory.map(h => h.timestamp),
+      y: filteredHistory.map(h => h.homeOdds),
       name: selectedMatchInfo?.team1 || '主队',
       color: '#3b82f6'
     },
     {
-      x: oddsTracking.oddsHistory.map(h => h.timestamp),
-      y: oddsTracking.oddsHistory.map(h => h.awayOdds),
+      x: filteredHistory.map(h => h.timestamp),
+      y: filteredHistory.map(h => h.awayOdds),
       name: selectedMatchInfo?.team2 || '客队',
       color: '#10b981'
     }
   ] : [];
 
-  const anomalies = oddsTracking?.anomalies || [];
+  const anomalies = filteredAnomalies;
   const latestAlert: OddsAlert | null = oddsTracking?.latestAlert || null;
   const anomalyPoints = anomalies.map(a => {
-    const point = oddsTracking?.oddsHistory.find(h => h.timestamp === a.timestamp);
+    const point = filteredHistory.find(h => h.timestamp === a.timestamp);
     return {
       x: a.timestamp,
       y: point ? (a.type === 'home' ? point.homeOdds : point.awayOdds) : 0,
@@ -213,6 +293,49 @@ export default function OddsTracking() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-slate-400" />
+            <span className="text-sm text-slate-400">时间范围:</span>
+          </div>
+          <div className="flex items-center gap-1 bg-esports-card/50 p-1 rounded-lg border border-esports-border/50">
+            {TIME_RANGE_PRESETS.map(preset => (
+              <button
+                key={preset.value}
+                onClick={() => setTimeRange(preset.value)}
+                className={cn(
+                  'px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200',
+                  timeRange === preset.value
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          {timeRange === 'custom' && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-500" />
+                <input
+                  type="datetime-local"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="px-3 py-1.5 bg-esports-card border border-esports-border rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <span className="text-slate-500">~</span>
+              <input
+                type="datetime-local"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="px-3 py-1.5 bg-esports-card border border-esports-border rounded-lg text-sm text-white focus:outline-none focus:border-blue-500/50"
+              />
+            </div>
+          )}
+        </div>
+
         {latestAlert && (
           <div className="mb-6 p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5 flex items-start gap-3">
             <div className="p-2 rounded-lg bg-yellow-500/15 flex-shrink-0">
@@ -245,7 +368,7 @@ export default function OddsTracking() {
                   <span className="text-sm text-slate-400">主队赔率</span>
                 </div>
                 <p className="text-3xl font-display font-bold text-white">
-                  {formatOdds(oddsTracking.oddsHistory[oddsTracking.oddsHistory.length - 1]?.homeOdds || 0)}
+                  {formatOdds(filteredHistory[filteredHistory.length - 1]?.homeOdds || 0)}
                 </p>
               </div>
               <div className="stat-card">
@@ -254,7 +377,7 @@ export default function OddsTracking() {
                   <span className="text-sm text-slate-400">客队赔率</span>
                 </div>
                 <p className="text-3xl font-display font-bold text-white">
-                  {formatOdds(oddsTracking.oddsHistory[oddsTracking.oddsHistory.length - 1]?.awayOdds || 0)}
+                  {formatOdds(filteredHistory[filteredHistory.length - 1]?.awayOdds || 0)}
                 </p>
               </div>
               <div className="stat-card">
@@ -272,7 +395,7 @@ export default function OddsTracking() {
                   <span className="text-sm text-slate-400">数据点数</span>
                 </div>
                 <p className="text-3xl font-display font-bold text-white">
-                  {oddsTracking.oddsHistory.length}
+                  {filteredHistory.length}
                 </p>
               </div>
             </div>
@@ -280,7 +403,7 @@ export default function OddsTracking() {
             <div className="stat-card mb-6">
               <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2">
                 <Activity className="w-5 h-5 text-blue-400" />
-                赔率变动曲线（赛前24小时）
+                赔率变动曲线 <span className="text-sm font-normal text-slate-400">({timeWindowLabel || '赛前24小时'})</span>
               </h3>
               <LineChart
                 data={chartData}
